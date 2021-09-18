@@ -11,6 +11,7 @@ db = Dartboard(pixels=301)
 fig = px.imshow(db.db_score_map, origin='lower', width=1000, height=1000)
 fig.update_xaxes(showticklabels=False)
 fig.update_yaxes(showticklabels=False)
+fig.update(layout_coloraxis_showscale=False)
 st.plotly_chart(fig, use_container_width=True)
 
 st.subheader('Expected score map')
@@ -51,5 +52,6 @@ exp_fig = px.imshow(db.exp_score_map(mu, Sigma, padding=100),
                     height=1000)
 exp_fig.update_xaxes(showticklabels=False)
 exp_fig.update_yaxes(showticklabels=False)
+exp_fig.update(layout_coloraxis_showscale=False)
 
 st.plotly_chart(exp_fig, use_container_width=True)
