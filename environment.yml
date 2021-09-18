@@ -1,0 +1,10 @@
+name: darts
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - ipykernel
+  - numpy
+  - scipy
+  - streamlit
+  - plotly
