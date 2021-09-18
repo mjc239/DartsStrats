@@ -1,6 +1,5 @@
 name: darts
 channels:
-  - conda-forge
   - defaults
 dependencies:
   - ipykernel
