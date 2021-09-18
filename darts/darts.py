@@ -65,7 +65,7 @@ class Dartboard:
         self.dartboard_dims = self.db_score_map.shape
         self.board_padding = board_padding
 
-    @functools.cached_property
+    #@functools.cached_property
     def _segment_dict(self):
         segment_vals = [11, 14, 9, 12, 5, 20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11]
         segment_dict = {k: v for k, v in zip(np.arange(-1, 20), segment_vals)}
