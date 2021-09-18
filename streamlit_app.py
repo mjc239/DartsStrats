@@ -1,9 +1,8 @@
 import streamlit as st
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 
-from darts import Dartboard
+from darts.darts import Dartboard
 st.set_page_config(layout="wide")
 st.title('Dartboard')
 
