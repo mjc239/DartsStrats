@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="180ef9e7-f8d3-448a-9db1-b5cade14caa4" name="Default Changelist" comment="" />
+    <list default="true" id="180ef9e7-f8d3-448a-9db1-b5cade14caa4" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
   <component name="ProjectId" id="1yHbHy8qyNik067WYmQit17FuOC" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showExcludedFiles" value="true" />
@@ -21,8 +27,8 @@
   </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="C:\Users\mikey\OneDrive\Documents\PycharmProjects\Darts\darts" />
       <recent name="C:\Users\mikey\OneDrive\Documents\PycharmProjects\Darts" />
+      <recent name="C:\Users\mikey\OneDrive\Documents\PycharmProjects\Darts\darts" />
     </key>
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\mikey\OneDrive\Documents\PycharmProjects\Darts\app" />
@@ -62,9 +68,9 @@
       <screen x="0" y="0" width="1440" height="2520" />
     </state>
     <state x="221" y="903" key="SettingsEditor/0.0.1440.2520/-1920.787.1920.1040/-1939.1867.1280.680@0.0.1440.2520" timestamp="1631913797776" />
-    <state x="416" y="1085" key="com.intellij.ide.util.TipDialog" timestamp="1631911384318">
+    <state x="416" y="1085" key="com.intellij.ide.util.TipDialog" timestamp="1631955590427">
       <screen x="0" y="0" width="1440" height="2520" />
     </state>
-    <state x="416" y="1085" key="com.intellij.ide.util.TipDialog/0.0.1440.2520/-1920.787.1920.1040/-1939.1867.1280.680@0.0.1440.2520" timestamp="1631911384318" />
+    <state x="416" y="1085" key="com.intellij.ide.util.TipDialog/0.0.1440.2520/-1920.787.1920.1040/-1939.1867.1280.680@0.0.1440.2520" timestamp="1631955590427" />
   </component>
 </project>
