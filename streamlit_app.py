@@ -10,7 +10,7 @@ st.title('A Data Scientist Plays Darts')
 page = st.sidebar.radio('Page:', ['Expected score map', 'Blackboard', 'Distribution calculator'])
 if page == 'Expected score map':
     st.header('Expected Score Map')
-    PIXELS = 301
+    PIXELS = 401
     db = Dartboard(pixels=PIXELS)
 
     nonspherical = st.checkbox('Non-spherical distribution?')
@@ -48,7 +48,7 @@ if page == 'Expected score map':
     fig.update_xaxes(showticklabels=False)
     fig.update_yaxes(showticklabels=False)
     aim_center = [int(PIXELS/2), int(PIXELS/2)]
-    throw_stds = [np.sqrt(Sigma[0, 0]), np.sqrt(Sigma[1, 1])]
+    throw_stds = [s/db.mm_per_pixel for s in [np.sqrt(Sigma[0, 0]), np.sqrt(Sigma[1, 1])]]
     fig.add_shape(type='circle',
                   x0=aim_center[0]+throw_stds[0],
                   y0=aim_center[1]-throw_stds[1],
