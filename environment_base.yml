@@ -7,4 +7,3 @@ dependencies:
   - scipy
   - streamlit
   - plotly
-  - bokeh
