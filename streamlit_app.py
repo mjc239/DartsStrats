@@ -7,7 +7,7 @@ from darts.darts import Dartboard
 st.set_page_config(page_title='Darts with Stats',
                    page_icon='🎯',
                    layout="wide")
-st.title('A Data Scientist Plays Darts')
+st.title('🎯 A Data Scientist Plays Darts')
 
 page = st.sidebar.radio('Page:', ['Expected score map', 'Blackboard', 'Distribution calculator'])
 if page == 'Expected score map':
