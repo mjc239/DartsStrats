@@ -1,9 +1,12 @@
 import streamlit as st
 import numpy as np
+import pandas as pd
 import plotly.express as px
 
 from darts.darts import Dartboard
-st.set_page_config(layout="wide")
+st.set_page_config(page_title='Darts with Stats',
+                   page_icon='🎯',
+                   layout="wide")
 st.title('A Data Scientist Plays Darts')
 
 page = st.sidebar.radio('Page:', ['Expected score map', 'Blackboard', 'Distribution calculator'])
@@ -64,3 +67,61 @@ if page == 'Expected score map':
     exp_fig.update_yaxes(showticklabels=False)
 
     st.plotly_chart(exp_fig, use_container_width=True)
+
+if page == 'Blackboard':
+    st.header('Game Blackboard')
+
+    def start_game(players, start_number):
+        st.session_state['current_player'] = 0
+        for i in range(len(players)):
+            st.session_state[f'player_{i}_score'] = int(start_number)
+        st.session_state['game_set_up'] = True
+
+    def update_score(scores, player):
+        score = int(sum(scores))
+        if st.session_state[f'player_{player}_score'] >= score:
+            st.session_state[f'player_{player}_score'] -= score
+        st.session_state['current_player'] = (st.session_state['current_player'] + 1) % len(players)
+
+    def skip_player():
+        st.session_state['current_player'] = (st.session_state['current_player'] + 1) % len(players)
+
+    def reset_game():
+        del st.session_state['current_player']
+        for i in range(len(players)):
+            st.session_state[f'player_{i}_score'] = start_number
+
+    with st.expander('Game setup'):
+        players = [st.text_input(f'Player {i}') for i in range(1, 5)]
+        players = [player for player in players if player!='']
+        start_number = st.number_input('Start number', value=501)
+        st.button('Set up game', on_click=start_game, args=(players, int(start_number)))
+
+    if 'current_player' not in st.session_state:
+        st.session_state['current_player'] = 0
+
+    if 'game_set_up' in st.session_state:
+        st.subheader('Current scores')
+        scores_df = pd.DataFrame(data=[st.session_state[f"player_{i}_score"] for i in range(len(players))],
+                                 index=players,
+                                 columns=['Current score'])
+        st.write(scores_df.to_markdown())
+
+        current_player = st.session_state["current_player"]
+        st.markdown('''---''')
+        st.subheader(f'{players[current_player]}\'s turn')
+        cols = st.columns(3)
+        with cols[0]:
+            score_1 = st.number_input('Dart 1 score', 0)
+        with cols[1]:
+            score_2 = st.number_input('Dart 2 score', 0)
+        with cols[2]:
+            score_3 = st.number_input('Dart 3 score', 0)
+        st.button('Submit scores', on_click=update_score, args=([score_1, score_2, score_3], current_player))
+
+        st.button('Skip to next player', on_click=skip_player)
+        st.markdown('''---''')
+        reset_game = st.button('Reset game', on_click=reset_game)
+if page != 'Blackboard':
+    if 'game_set_up' in  st.session_state:
+        del st.session_state['game_set_up']
