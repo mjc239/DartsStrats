@@ -58,12 +58,14 @@ if page == 'Expected score map':
                   y1=aim_center[1]+throw_stds[1],
                   line_color='red',
                   fillcolor='red', opacity=0.5)
+    fig.update_layout(margin=dict(l=5, r=5, t=5, b=5))
     st.plotly_chart(fig, use_container_width=True)
 
     exp_score_map = db.exp_score_map(mu, Sigma, padding=100)
     exp_fig = px.imshow(db.exp_score_map(mu, Sigma, padding=100), origin='lower')
     exp_fig.update_xaxes(showticklabels=False)
     exp_fig.update_yaxes(showticklabels=False)
+    exp_fig.update_layout(margin=dict(l=5, r=5, t=5, b=5))
 
     st.plotly_chart(exp_fig, use_container_width=True)
 
