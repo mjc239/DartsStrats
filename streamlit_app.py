@@ -46,7 +46,7 @@ if page == 'Expected score map':
                 Sigma = np.array([[sigma_11, sigma_12], [sigma_21, sigma_22]])
         st.form_submit_button()
 
-    fig = px.imshow(db.db_score_map, origin='lower', height=1000)
+    fig = px.imshow(db.db_score_map, origin='lower')
     fig.update_xaxes(showticklabels=False)
     fig.update_yaxes(showticklabels=False)
     aim_center = [int(PIXELS/2), int(PIXELS/2)]
@@ -61,8 +61,7 @@ if page == 'Expected score map':
     st.plotly_chart(fig, use_container_width=True)
 
     exp_score_map = db.exp_score_map(mu, Sigma, padding=100)
-    exp_fig = px.imshow(db.exp_score_map(mu, Sigma, padding=100),
-                        origin='lower', height=1000)
+    exp_fig = px.imshow(db.exp_score_map(mu, Sigma, padding=100), origin='lower')
     exp_fig.update_xaxes(showticklabels=False)
     exp_fig.update_yaxes(showticklabels=False)
 
