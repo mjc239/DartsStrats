@@ -12,7 +12,7 @@ st.title('🎯 A Data Scientist Plays Darts')
 page = st.sidebar.radio('Page:', ['Expected score map', 'Blackboard', 'Distribution calculator'])
 if page == 'Expected score map':
     st.header('Expected Score Map')
-    PIXELS = 401
+    PIXELS = 301
     db = Dartboard(pixels=PIXELS)
 
     nonspherical = st.checkbox('Non-spherical distribution?')
