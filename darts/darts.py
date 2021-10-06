@@ -65,7 +65,7 @@ class Dartboard:
         self.dartboard_dims = self.db_score_map.shape
         self.board_padding = board_padding
 
-    #@functools.cached_property
+    @functools.cached_property
     def _segment_dict(self):
         segment_vals = [11, 14, 9, 12, 5, 20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11]
         segment_dict = {k: v for k, v in zip(np.arange(-1, 20), segment_vals)}
@@ -182,8 +182,8 @@ class Dartboard:
 
 class ThrowingDistribution(Dartboard):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, pixels, board_padding=None):
+        super().__init__(pixels, board_padding)
         self.mu = None
         self.Sigma = None
         self._choices_dict = defaultdict(list)
@@ -194,50 +194,61 @@ class ThrowingDistribution(Dartboard):
                               mu_initial=np.zeros(2),
                               Sigma_initial=20*np.eye(2),
                               return_params=False,
-                              N_max=100_000):
+                              N_start=1000,
+                              N_max=100_000,
+                              N_scaler=2,
+                              burn_in_period=5):
+        # Check throws is a list/tuple
         assert isinstance(throws, (list, tuple))
 
+        # Setup optimisation
         mu = mu_initial
         Sigma = Sigma_initial
         likelihood = -1e20
         likelihoods = []
         n = len(throws)
         unique_throws = np.unique(throws)
-
         convergence = False
 
-        N = 100
-        while (N < N_max) or (not convergence):
+        N = N_start
+        while (N < N_max) and (not convergence):
             # E step
-            # Burn-in period
-            N = int(min(N_max, 2*N))
+            # Compute Q(mu, Sigma) = E_0(l(mu, Sigma; X, Z)|X)
 
-            #print('creating caches')
+            # Burn-in period
+            if burn_in_period == 0:
+                N = int(min(N_max, N_scaler*N))
+            else:
+                burn_in_period -= 1
+
+            # Cache E(Z|X) and E(ZZ^T|X) for each observed value of X
             ezs_cache = {}
             ezzs_cache = {}
             for throw in unique_throws:
                 ezs_cache[throw] = self._moment_z_given_x(mu, Sigma, 1, throw, N)
                 ezzs_cache[throw] = self._moment_z_given_x(mu, Sigma, 2, throw, N)
-            #print('caches created')
 
-            #print('Using caches')
+            # Use caches to compute E(Z|X) and E(ZZ^T|X) for all throws
             ezs = [ezs_cache[throw] for throw in throws]
             ezzs = [ezzs_cache[throw] for throw in throws]
 
             # M step
-            mu = 1./n * np.sum(ezs, axis=0)
-            Sigma = 1./n * np.sum(ezzs, axis=0) - np.outer(mu, mu)
+            # Maximise Q (c.f. MLE for multivariate Gaussian)
+            ez = mu = 1./n * np.sum(ezs, axis=0)
+            ezz = 1./n * np.sum(ezzs, axis=0)
+            Sigma = ezz - np.outer(ez, ez)
 
             # Stopping criterion
-            likelihood = self._Q(mu, Sigma, mu, Sigma, n)
+            likelihood = self._Q(mu, Sigma, ez, ezz, n)
             recent_likelihood_mean = np.mean(likelihoods[-5:])
             likelihoods.append(likelihood)
 
             likelihood_eval = np.abs((likelihood - recent_likelihood_mean)/recent_likelihood_mean)
-            print(mu, likelihood, recent_likelihood_mean, likelihood_eval)
-            convergence = (likelihood_eval < tol)
+            #print(mu, likelihood, recent_likelihood_mean, likelihood_eval, N)
+            if burn_in_period == 0:
+                convergence = (likelihood_eval < tol)
 
-        print(N)
+        #print(N)
         # Save optimal mu, Sigma
         self.mu = mu
         self.Sigma = Sigma
@@ -255,37 +266,46 @@ class ThrowingDistribution(Dartboard):
         if N <= n_cached_values:
             choices = self._choices_dict[score][:N]
         else:
+            # Need to sample a number of new values uniformly from the relevant regions
             n_new_choices = N - n_cached_values
-            #print('isolating relevant pixels')
+
+            # Find the regions with the relevant score
             allowed_pixels = np.array(np.where(self.db_score_map == score)).T
             n_allowed_pixels = allowed_pixels.shape[0]
-            #print('choices')
+
+            # Sample pixels uniformly with replacement from relevant regions, and convert from pixel -> mm
             choices_idx = np.random.choice(np.arange(n_allowed_pixels), n_new_choices)
             choices = [self.pixel_to_point(allowed_pixels[i]) for i in choices_idx]
+
             # cache choices for next iteration
             self._choices_dict[score] += choices
 
         # Make into array
         choices = np.array(choices)
 
-        #print('computing gaussians')
+        # Importance sampling - weights proportional to ratio of pdfs of 2-D Gaussian and uniform (constant)
         weights = self.gaussian_2d(choices, mu, Sigma)
         norm = np.sum(weights)
         if norm == 0:
             return np.zeros(2)
 
-        #print('calculating arg')
+        # Integrand
         if moment == 2:
             arg = np.array([np.outer(i, i) for i in choices])
         else:
             arg = choices
 
-        #print('integral estimate')
+        # Estimate integral using MC importance sampling
         return np.sum(weights * arg.T, axis=moment) / norm
 
     def _Q(self, mu, Sigma, ez, ezz, n):
         log_lik = -0.5*n*np.log(np.linalg.det(Sigma))
-        log_lik -= 0.5*n*np.trace(np.linalg.inv(Sigma) @ (ezz - np.outer(ez, ez)))
+        if np.isnan(log_lik):
+            raise ValueError(f'Determinant of Sigma is negative!')
+        inv_Sigma = np.linalg.inv(Sigma)
+        log_lik -= 0.5*n*np.linalg.multi_dot([mu, inv_Sigma, mu])
+        log_lik += n*np.linalg.multi_dot([mu, inv_Sigma, ez])
+        log_lik -= 0.5*n*np.trace(inv_Sigma @ ezz)
         return log_lik
 
     @staticmethod
