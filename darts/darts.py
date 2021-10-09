@@ -244,11 +244,10 @@ class ThrowingDistribution(Dartboard):
             likelihoods.append(likelihood)
 
             likelihood_eval = np.abs((likelihood - recent_likelihood_mean)/recent_likelihood_mean)
-            #print(mu, likelihood, recent_likelihood_mean, likelihood_eval, N)
+            print(mu, likelihood, recent_likelihood_mean, likelihood_eval, N)
             if burn_in_period == 0:
                 convergence = (likelihood_eval < tol)
 
-        #print(N)
         # Save optimal mu, Sigma
         self.mu = mu
         self.Sigma = Sigma

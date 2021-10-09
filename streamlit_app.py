@@ -2,8 +2,10 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import matplotlib.image as mpimg
+import matplotlib.pyplot as plt
 
-from darts.darts import Dartboard
+from darts.darts import Dartboard, ThrowingDistribution
 st.set_page_config(page_title='Darts with Stats',
                    page_icon='🎯',
                    layout="wide")
@@ -124,5 +126,37 @@ if page == 'Blackboard':
         st.markdown('''---''')
         reset_game = st.button('Reset game', on_click=reset_game)
 if page != 'Blackboard':
-    if 'game_set_up' in  st.session_state:
+    if 'game_set_up' in st.session_state:
         del st.session_state['game_set_up']
+if page == 'Distribution calculator':
+    def reset_scores():
+        del st.session_state['scores']
+
+    def update_dist_scores(n):
+        allowed_scores = [0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
+        16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30, 32, 33, 34,
+        36, 38, 39, 40, 42, 45, 48, 50, 51, 54, 57, 60]
+        scores = [int(i) for i in n.split(',') if len(i) > 0]
+        filtered_scores = [score for score in scores if score in allowed_scores]
+        if len(filtered_scores) != len(scores):
+            disallowed_scores = [score for score in scores if score not in allowed_scores]
+            disallowed_scores = np.unique(disallowed_scores)
+            st.warning(f'Scores not valid, so have been ignored: {", ".join([str(i) for i in disallowed_scores])}')
+        st.session_state['scores'] += filtered_scores
+
+    if 'scores' not in st.session_state:
+        st.session_state['scores'] = []
+    st.write('Input:')
+
+    score = st.text_input('Score: ')
+    st.button('Submit', on_click=update_dist_scores, args=(score,))
+
+    dis = ThrowingDistribution(1001)
+
+    if st.button('Compute distribution:'):
+        dis.estimate_distribution(st.session_state['scores'], tol=.01, N_start=5000, N_max=100_000, N_scaler=1.5)
+
+        st.write(dis.mu)
+        st.write(dis.Sigma)
+
+    reset_scores = st.button('Reset scores', on_click=reset_scores)
