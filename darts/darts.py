@@ -18,7 +18,7 @@ class Dartboard:
         self.board_padding = board_padding
 
     def generate_dartboard(self, pixels):
-        assert pixels % 2 == 1
+        # assert pixels % 2 == 1
         # width of dartboard score area = 340mm
         self.mm_per_pixel = 340/(pixels-1)
 
