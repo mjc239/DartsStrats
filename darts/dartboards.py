@@ -32,8 +32,14 @@ DARTBOARD_CONSTANTS = {
     },
 }
 
+QUADRO_CONSTANTS = {
+    **DARTBOARD_CONSTANTS,
+    "QUAD_OUTER_RADIUS": 64.6,
+    "QUAD_INNER_RADIUS": 56.6,
+}
 
-def generate_dartboard(pixels: int) -> np.ndarray:
+
+def generate_dartboard(pixels: int, quadro: bool = False) -> np.ndarray:
     """Generate a dartboard as a numpy array, with each entry indicating the
     score at that pixel.
 
@@ -65,12 +71,20 @@ def generate_dartboard(pixels: int) -> np.ndarray:
     ti = DARTBOARD_CONSTANTS["TRIPLE_INNER_RADIUS"]
     to = DARTBOARD_CONSTANTS["TRIPLE_OUTER_RADIUS"]
 
-    single_rings = (((r >= bo) & (r < ti)) | ((r >= ti) & (r < di))).astype(int)
+    single_rings = (((r >= bo) & (r < ti)) | ((r >= to) & (r < di))).astype(int)
     double_rings = ((r >= di) & (r < do)).astype(int)
     triple_rings = ((r >= ti) & (r < to)).astype(int)
     outer_bull = ((r >= bi) & (r < bo)).astype(int)
     inner_bull = (r < bi).astype(int)
     multiplier_mask = single_rings + 2 * double_rings + 3 * triple_rings
+    checkouts = np.logical_or(double_rings, inner_bull)
+
+    if quadro:
+        qi = QUADRO_CONSTANTS["QUAD_INNER_RADIUS"]
+        qo = QUADRO_CONSTANTS["QUAD_OUTER_RADIUS"]
+        quad_rings = ((r >= qi) & (r < qo)).astype(int)
+        # Only 3, as single rings has already added 1 multiple
+        multiplier_mask += 3 * quad_rings
 
     score_arr = np.zeros([pixels, pixels])
 
@@ -88,4 +102,4 @@ def generate_dartboard(pixels: int) -> np.ndarray:
     # Bullseyes
     score_arr += 25 * outer_bull + 50 * inner_bull
 
-    return score_arr
+    return (score_arr, checkouts)

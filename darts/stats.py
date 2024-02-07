@@ -1,5 +1,5 @@
 import numpy as np
-from dartboards import DARTBOARD_CONSTANTS
+from darts.dartboards import DARTBOARD_CONSTANTS
 from typing import Callable
 
 
@@ -24,11 +24,12 @@ def gaussian_filter(board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray) -> np.
         raise ValueError("Board should be a square array!")
 
     pixels = board.shape[0]
-    radius = DARTBOARD_CONSTANTS["DARTBOARD_RADIUS_MM"]
+    # radius = DARTBOARD_CONSTANTS["DARTBOARD_RADIUS_MM"]
 
     x, y = np.meshgrid(
-        np.linspace(-radius, radius, pixels),
-        np.linspace(-radius, radius, pixels),
+        np.linspace(-board.shape[0]//2, board.shape[0]//2, pixels),
+        np.linspace(-board.shape[1]//2, board.shape[1]//2, pixels),
+        copy=False
     )
 
     det = Sigma[0, 0] * Sigma[1, 1] - Sigma[0, 1] ** 2
@@ -36,9 +37,9 @@ def gaussian_filter(board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray) -> np.
         1.0
         / det
         * (
-            Sigma[1, 1] * (x - mu[0]) ** 2
-            - 2 * Sigma[0, 1] * (x - mu[0]) * (y - mu[1])
-            + Sigma[0, 0] * (y - mu[1]) ** 2
+            Sigma[1, 1] * (x - mu[1]) ** 2
+            - 2 * Sigma[0, 1] * (x - mu[1]) * (y - mu[0])
+            + Sigma[0, 0] * (y - mu[0]) ** 2
         )
     )
 

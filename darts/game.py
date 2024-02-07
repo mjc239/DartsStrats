@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Union
+from typing import Union, List
 
 
 @dataclass
@@ -10,7 +10,11 @@ class Player:
 
 def _convert_throw_string_to_score(throw: str):
     char = throw[0]
-    if char.isdigit():
+    allowed_scores = [0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
+        16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30, 32, 33, 34,
+        36, 38, 39, 40, 42, 45, 48, 50, 51, 54, 57, 60]
+    
+    if char.isdigit() and int(throw) in allowed_scores:
         return int(throw)
     elif char == "D":
         return 2 * int(throw[1:])
@@ -25,7 +29,7 @@ def _convert_throw_string_to_score(throw: str):
 
 
 class Leg:
-    def __init__(self, players: Union[list[str], int] = 2, start_score: int = 501):
+    def __init__(self, players: Union[List[str], int] = 2, start_score: int = 501):
         self.start_score = start_score
 
         if isinstance(players, int):
@@ -47,7 +51,7 @@ class Leg:
             ret += f"\n"
         return ret
 
-    def turn(self, player: str, throws: list[str]):
+    def turn(self, player: str, throws: List[str]):
         if self.winner:
             raise AttributeError("Winner already declared!")
 
@@ -67,6 +71,7 @@ class Leg:
                 return None
 
         if current_score <= cumulative_score:
+            self.rounds[player].append(current_score)
             return None
 
         self.players[player].score = current_score - cumulative_score
