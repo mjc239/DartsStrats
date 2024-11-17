@@ -1,5 +1,6 @@
 import numpy as np
-from dartboards import DARTBOARD_CONSTANTS
+from darts.dartboards import DARTBOARD_CONSTANTS
+
 
 def mm_per_pixel(pixels):
     """Converts pixels to millimeters
@@ -10,5 +11,4 @@ def mm_per_pixel(pixels):
     Returns:
         float: Number of millimeters
     """
-    return 2*DARTBOARD_CONSTANTS['DARTBOARD_RADIUS_MM']/pixels
-
+    return 2 * DARTBOARD_CONSTANTS["DARTBOARD_RADIUS_MM"] / pixels
