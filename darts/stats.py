@@ -1,19 +1,22 @@
 import numpy as np
 from darts.dartboards import DARTBOARD_CONSTANTS
 from typing import Callable
+from numba import njit
 
 
+@njit
 def gaussian_filter(board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray) -> np.ndarray:
     """Generates a Gaussian filter with a specified mean and variance.
 
     Args:
-        board (np.ndarray): The dartboard dsecribed by a numpy array.
+        board (np.ndarray): The dartboard described by a numpy array.
         mu (np.ndarray): Mean vector. Should be a length 2 array.
         Sigma (np.ndarray): Variance matrix. Should be a 2x2 array.
 
     Returns:
         np.ndarray: Gaussian filter.
     """
+    # Check input dimensions
     if len(mu) != 2:
         raise ValueError("mu should have length 2!")
     if Sigma.shape != (2, 2):
@@ -24,14 +27,15 @@ def gaussian_filter(board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray) -> np.
         raise ValueError("Board should be a square array!")
 
     pixels = board.shape[0]
-    # radius = DARTBOARD_CONSTANTS["DARTBOARD_RADIUS_MM"]
 
-    x, y = np.meshgrid(
-        np.linspace(-board.shape[0]//2, board.shape[0]//2, pixels),
-        np.linspace(-board.shape[1]//2, board.shape[1]//2, pixels),
-        copy=False
-    )
+    # Generate a grid of x and y values
+    xx = np.linspace(-board.shape[0] // 2, board.shape[0] // 2, pixels)
+    x = np.empty(shape=(xx.size, xx.size), dtype=xx.dtype)
+    for j in range(xx.size):
+        x[:, j] = xx[j]
+    y = x.T
 
+    # Compute the exponent of the Gaussian
     det = Sigma[0, 0] * Sigma[1, 1] - Sigma[0, 1] ** 2
     exponent = (
         1.0
@@ -43,6 +47,7 @@ def gaussian_filter(board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray) -> np.
         )
     )
 
+    # Compute the filter
     filter = np.exp(-exponent / 2.0)
     filter /= 2 * np.pi * np.sqrt(det)
 
@@ -116,6 +121,7 @@ def variance_score(
     )
     expectation_X = expected_score(board, mu, Sigma, padding=padding)
 
+    # Compute the variance as E[X^2] - E[X]^2
     variance = expectation_X2 - expectation_X * expectation_X
 
     return variance

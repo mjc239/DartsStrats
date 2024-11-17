@@ -3,9 +3,18 @@ from darts.dartboards import generate_dartboard, DARTBOARD_CONSTANTS
 from darts.stats import gaussian_filter
 from itertools import product
 from functools import cached_property
-from numba import njit, types
+from numba import njit, types, prange
 from numba.typed import Dict
 from tqdm import tqdm
+
+
+@njit
+def compute_transition_probs_from_point_njit(
+    board, point, Sigma, allowed_scores, checkouts
+):
+    gf = gaussian_filter(board, point, Sigma)
+    gf = gf / np.sum(gf)
+    return prob_score(gf, board, allowed_scores, checkouts)
 
 
 @njit
@@ -102,7 +111,9 @@ def _compute_actions(values, points, probs, checkout_probs):
 
 
 class SinglePlayerContinuousMDP:
-    def __init__(self, board_pixels, Sigma, margin, game_start, quadro=None):
+    def __init__(
+        self, board_pixels, Sigma, margin, game_start, point_stride=1, quadro=None
+    ):
         self.board_pixels = board_pixels
         self.quadro = quadro
 
@@ -117,6 +128,7 @@ class SinglePlayerContinuousMDP:
         self.game_start = game_start
         self.values = {score: 0 for score in range(game_start + 1)}
         self.policy = None
+        self.point_stride = point_stride
 
     @cached_property
     def points(self):
@@ -129,7 +141,10 @@ class SinglePlayerContinuousMDP:
         return np.array(
             [
                 [i, j]
-                for i, j in product(range(self.board_pixels), range(self.board_pixels))
+                for i, j in product(
+                    range(0, self.board_pixels, self.point_stride),
+                    range(0, self.board_pixels, self.point_stride),
+                )
                 if np.linalg.norm(np.array([i, j]) - self.centre)
                 < radius_pixels + self.margin
             ]
@@ -148,7 +163,13 @@ class SinglePlayerContinuousMDP:
             (
                 probs[tuple(start)],
                 checkout_probs[tuple(start)],
-            ) = self.compute_transition_probs_from_point(start - self.centre)
+            ) = compute_transition_probs_from_point_njit(
+                self.board,
+                start - self.centre,
+                self.Sigma,
+                self.allowed_scores,
+                self.checkouts,
+            )
         return {"probs": probs, "checkout_probs": checkout_probs}
 
     def compute_values(self, threshold):

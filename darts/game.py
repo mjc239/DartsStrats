@@ -4,31 +4,95 @@ from typing import Union, List
 
 @dataclass
 class Player:
+    """Dataclass to store player information.
+    Attributes:
+        name (str): Name of the player.
+        score (int): Current score of the player.
+    """
+
     name: str
     score: int
 
 
-def _convert_throw_string_to_score(throw: str):
+def _convert_throw_string_to_score(throw: str) -> int:
+    """Converts a string representing a throw to a score.
+    Args:
+        throw (str): String representing a throw. Examples include "20", "D20", "T20", "SB", "DB", "OB", "IB".
+    Returns:
+        int: The score of the throw.
+    Raises:
+        ValueError: If the throw string is not valid.
+    """
     char = throw[0]
-    allowed_scores = [0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
-        16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30, 32, 33, 34,
-        36, 38, 39, 40, 42, 45, 48, 50, 51, 54, 57, 60]
-    
+    allowed_scores = [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        24,
+        25,
+        26,
+        27,
+        28,
+        30,
+        32,
+        33,
+        34,
+        36,
+        38,
+        39,
+        40,
+        42,
+        45,
+        48,
+        50,
+        51,
+        54,
+        57,
+        60,
+    ]
+
     if char.isdigit() and int(throw) in allowed_scores:
+        # Single throw
         return int(throw)
     elif char == "D":
+        # Double throw
         return 2 * int(throw[1:])
     elif char == "T":
+        # Triple throw
         return 3 * int(throw[1:])
     elif (throw[:2] == "OB") or (throw[:2] == "SB"):
+        # Outer bullseye or single bullseye
         return 25
     elif (throw[:2] == "IB") or (throw[:2] == "DB"):
+        # Inner bullseye or double bullseye
         return 50
     else:
         raise ValueError(f"Throw string {throw} not valid!")
 
 
 class Leg:
+    """Class to represent a leg of darts."""
+
     def __init__(self, players: Union[List[str], int] = 2, start_score: int = 501):
         self.start_score = start_score
 
