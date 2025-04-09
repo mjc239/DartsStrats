@@ -58,8 +58,8 @@ def expected_score(
     board: np.ndarray,
     mu: np.ndarray,
     Sigma: np.ndarray,
-    padding: int = None,
-    score_function: Callable[[np.ndarray], np.ndarray] = None,
+    padding: int | None = None,
+    score_function: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> np.ndarray:
     """Computes the expected score at all positions in the board, with the
     specified throwing distribution (defined by mu, Sigma).
@@ -103,7 +103,7 @@ def expected_score(
 
 
 def variance_score(
-    board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, padding: np.ndarray = False
+    board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, padding: int | None = None
 ) -> np.ndarray:
     """Computes the variance of the score at each point of the dartboard.
 
@@ -128,7 +128,7 @@ def variance_score(
 
 
 def std_score(
-    board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, padding: np.ndarray = False
+    board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray, padding: int | None = None
 ) -> np.ndarray:
     """Computes the standard deviation of the score at each point of the dartboard.
 

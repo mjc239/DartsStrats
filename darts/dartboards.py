@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Tuple
 
 DARTBOARD_CONSTANTS = {
     "DARTBOARD_RADIUS_MM": 225.5,
@@ -39,7 +40,9 @@ QUADRO_CONSTANTS = {
 }
 
 
-def generate_dartboard(pixels: int, quadro: bool = False) -> np.ndarray:
+def generate_dartboard(
+    pixels: int, quadro: bool = False
+) -> Tuple[np.ndarray, np.ndarray]:
     """Generate a dartboard as a numpy array, with each entry indicating the
     score at that pixel.
 
@@ -48,8 +51,8 @@ def generate_dartboard(pixels: int, quadro: bool = False) -> np.ndarray:
         each side of the image should have.
 
     Returns:
-        np.ndarray: numpy array, with each entry indicating the score at
-        that pixel.
+        tuple[np.ndarray, np.ndarray]: numpy array, with each entry indicating the score at
+        that pixel, and a boolean array indicating checkouts.
     """
     radius = DARTBOARD_CONSTANTS["DARTBOARD_RADIUS_MM"]
 
