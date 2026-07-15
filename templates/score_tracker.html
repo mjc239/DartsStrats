@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Score Tracker - Darts Optimizer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <h1>Score Tracker</h1>
+    <p>Keep track of scores during the game and get aiming pointers.</p>
+
+    <div>
+        <form action="{{ url_for('score_tracker') }}" method="post">
+            <label for="player_score">Enter Player Score:</label>
+            <input type="number" id="player_score" name="player_score">
+            <button type="submit">Update Score</button>
+        </form>
+    </div>
+
+    <div id="score-tracker-results">
+        <!-- Placeholder for score tracking results -->
+        <h2>Current Game Status</h2>
+        <p>Player scores and suggested aims will appear here as the game progresses.</p>
+    </div>
+
+    <p><a href="{{ url_for('home') }}">Back to Home</a></p>
+</body>
+</html>

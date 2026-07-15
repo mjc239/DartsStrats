@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Throwing Distribution - Darts Optimizer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <h1>Calculate Your Throwing Distribution</h1>
+    <p>Record your throws to calculate your distribution, which will improve the aiming recommendations.</p>
+
+    <div>
+        <form action="{{ url_for('distribution') }}" method="post">
+            <label for="throw_data">Enter throw data (e.g., distance from bullseye):</label>
+            <input type="text" id="throw_data" name="throw_data">
+            <button type="submit">Calculate Distribution</button>
+        </form>
+    </div>
+
+    <div id="distribution-results">
+        <!-- Placeholder for displaying the calculated distribution -->
+        <h2>Your Throwing Distribution</h2>
+        <p>Once calculated, your distribution data will appear here, aiding aim optimization.</p>
+    </div>
+
+    <p><a href="{{ url_for('home') }}">Back to Home</a></p>
+</body>
+</html>

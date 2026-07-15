@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Darts Optimizer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <h1>Welcome to the Darts Optimizer</h1>
+    <p>Optimize your game with tailored strategies!</p>
+    <ul>
+        <li><a href="{{ url_for('aim_optimizer') }}">Optimal Aim</a></li>
+        <li><a href="{{ url_for('distribution') }}">Compute Throwing Distribution</a></li>
+        <li><a href="{{ url_for('check_out') }}">Check-Out Strategy</a></li>
+        <li><a href="{{ url_for('score_tracker') }}">Score Tracker</a></li>
+    </ul>
+</body>
+</html>
