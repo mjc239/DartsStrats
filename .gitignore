@@ -116,3 +116,7 @@ dmypy.json
 # Editor
 .idea/
 .idea/workspace.xml
+
+# Large precomputed transition probability files (too large for GitHub)
+notebooks/transition_probs/360-pixel_20-sigma-40-margin
+notebooks/transition_probs/checkout_360-pixel_20-sigma-40-margin
