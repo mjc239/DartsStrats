@@ -275,7 +275,8 @@ class SinglePlayerContinuousMDP:
                 )
                 if np.linalg.norm(np.array([i, j]) - self.centre)
                 < radius_pixels + self.margin
-            ]
+            ],
+            dtype=np.int32,
         )
 
     def compute_transition_probs_from_point(self, point):
