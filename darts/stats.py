@@ -28,8 +28,12 @@ def gaussian_filter(board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray) -> np.
 
     pixels = board.shape[0]
 
-    # Generate a grid of x and y values
-    xx = np.linspace(-board.shape[0] // 2, board.shape[0] // 2, pixels)
+    # Generate a grid of x and y values.
+    # This must have unit spacing and put 0 exactly on pixel `pixels // 2`:
+    # np.linspace(-n//2, n//2, n) has spacing n/(n-1) and straddles zero, which
+    # displaces the throwing distribution from its intended aim point by up to
+    # a pixel, with the error growing towards the edge of the board.
+    xx = (np.arange(pixels) - pixels // 2).astype(np.float64)
     x = np.empty(shape=(xx.size, xx.size), dtype=xx.dtype)
     for j in range(xx.size):
         x[:, j] = xx[j]
