@@ -20,7 +20,6 @@ regions) rather than to the board itself.
 import numpy as np
 
 from darts.dartboards import generate_dartboard, DARTBOARD_CONSTANTS
-from darts.stats import gaussian_filter  # noqa: F401  (kept for API parity)
 
 
 def gaussian_kernel(pixels, Sigma):

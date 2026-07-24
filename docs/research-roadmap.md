@@ -125,9 +125,11 @@ found ~1,950 points that are the argmax for some isotropic random direction, so
 the hull is not tiny — but isotropic directions are far broader than the value
 vectors that actually arise, which are monotone in score. Taking the union of the
 points that are optimal *somewhere* in a family of single-player problems gives a
-much smaller set (`mdp_2player.candidate_points`).
+much smaller set: `mdp_2player.candidate_points` cuts a 1,893-point grid to 195
+(10%), and re-solving the single-player 501 problem on the reduced grid changes
+the answer by less than 1e-6 darts.
 
-Worth doing properly, because a 10× reduction in the action set is a 10×
+Worth pushing further, because a 10× reduction in the action set is a 10×
 reduction in every solve, and it turns the full 501×501 three-dart two-player
 game from "overnight" into "over lunch". Two routes:
 
