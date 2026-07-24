@@ -56,15 +56,21 @@ def generate_dartboard(
     """
     radius = DARTBOARD_CONSTANTS["DARTBOARD_RADIUS_MM"]
 
-    # Create grid covering full dartboard area, with the
-    # correct number of pixels
-    x, y = np.meshgrid(
-        np.linspace(-radius, radius, pixels), np.linspace(-radius, radius, pixels)
-    )
+    # Create grid covering full dartboard area, with the correct number of
+    # pixels. The spacing is exactly `darts.utils.mm_per_pixel` and the centre
+    # of the board falls exactly on pixel `pixels // 2`, so that pixel indices
+    # used as aiming points, the Gaussian throw kernel and the board geometry
+    # all share one coordinate system. (np.linspace(-r, r, pixels) instead has
+    # spacing 2r/(pixels-1) and puts the bull between two pixels.)
+    coords = (np.arange(pixels) - pixels // 2) * (2 * radius / pixels)
+    x, y = np.meshgrid(coords, coords)
 
     # Convert to polar coordinates
     r = np.sqrt(x * x + y * y)
-    theta = np.arctan2(y, x)
+    # Wrap into [-pi, pi): the segment intervals below are half-open, so points
+    # exactly on the negative x-axis (arctan2 returns +pi) would otherwise fall
+    # into no segment at all and score zero.
+    theta = np.mod(np.arctan2(y, x) + np.pi, 2 * np.pi) - np.pi
 
     # Score multiplier mask
     bi = DARTBOARD_CONSTANTS["INNER_BULLSEYE_RADIUS_MM"]
