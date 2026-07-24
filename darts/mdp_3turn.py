@@ -178,10 +178,13 @@ class ThreeDartMDP:
         self.pol3tab = np.full(G + 1, -1, dtype=np.int32)
         self.pol2tab = np.full(G + 1, -1, dtype=np.int32)
 
-        # Round-start-dependent policies, only defined for the low-score region.
+        # Round-start-dependent values and policies, only defined for the
+        # low-score region where a bust is reachable.
         s_low = min(G, self.s_indep - 1)
         self.pol3low = np.full((s_low + 1, min(G, self.u3_indep - 1) + 1), -1, np.int32)
         self.pol2low = np.full((s_low + 1, min(G, self.u2_indep - 1) + 1), -1, np.int32)
+        self.V3low = np.full(self.pol3low.shape, np.nan)
+        self.V2low = np.full(self.pol2low.shape, np.nan)
         self.s_low = s_low
 
         # A3[u] = sum_j P[:, j] * V1[u - S[j]] over board scores that leave a
@@ -265,13 +268,14 @@ class ThreeDartMDP:
 
                 if record:
                     if n_var3:
-                        a3 = q3.argmax(axis=1)
-                        self.pol3low[s, lo3 : hi3 + 1] = a3
+                        self.pol3low[s, lo3 : hi3 + 1] = q3.argmax(axis=1)
+                        self.V3low[s, lo3 : hi3 + 1] = v3[:n_var3]
                     if s >= self.u3_indep:
                         self.V3tab[s] = v3[s - lo3]
                         self.pol3tab[s] = q3s.argmax()
                     else:
                         self.pol3low[s, s] = q3s.argmax()
+                        self.V3low[s, s] = v3[s - lo3]
 
                     a2 = q2.argmax(axis=1)
                     for m, u in enumerate(var2):
@@ -280,6 +284,7 @@ class ThreeDartMDP:
                             self.pol2tab[s] = a2[m]
                         else:
                             self.pol2low[s, u] = a2[m]
+                            self.V2low[s, u] = v2[u - lo2]
 
                     self.pol1[s] = q1.argmax()
 
@@ -327,20 +332,62 @@ class ThreeDartMDP:
 
     # -- accessors --------------------------------------------------------
 
-    def value(self, score, dart, round_start):
+    def value(self, score, dart, round_start=None):
         """Value of state (score, dart, round_start); negative = expected cost."""
         if score == 0:
             return 0.0
         if dart == 1:
             return self.V1[score]
-        if dart == 3 and score >= self.u3_indep:
-            return self.V3tab[score]
-        if dart == 2 and score >= self.u2_indep:
-            return self.V2tab[score]
-        raise KeyError(
-            "low-score values depend on round_start and are not cached; "
-            "re-solve with keep_low_values=True or use policy() instead"
+        if dart == 3:
+            if score >= self.u3_indep:
+                return self.V3tab[score]
+            return self.V3low[round_start, score]
+        if dart == 2:
+            if score >= self.u2_indep:
+                return self.V2tab[score]
+            return self.V2low[round_start, score]
+        raise ValueError("dart must be 1, 2 or 3")
+
+    def q_values(self, score, dart, round_start=None):
+        """
+        Value of aiming at each candidate point from state
+        ``(score, dart, round_start)``, under optimal play thereafter.
+
+        The maximum equals ``value(score, dart, round_start)``; the gap between
+        the best and second-best point says how much the choice actually
+        matters, which is often far more informative than the argmax alone.
+
+        Returns:
+            np.ndarray: (n_points,) Q-values, on the same negative scale as the
+            value function.
+        """
+        if round_start is None:
+            round_start = score
+        S = self.scores
+        k = self._n_valid(score)
+        w = np.zeros(self.n_scores)
+        for j in range(k):
+            ns = score - int(S[j])
+            # Dart 3 ends the round, so a legal throw hands over to a fresh
+            # round on the new score (including a dart that scores zero, which
+            # ends the round back on the round start).
+            w[j] = self.V1[ns] if dart == 3 else self.value(ns, dart + 1, round_start)
+        x = self.V1[round_start]
+        return self.P @ w + x * self._bust_row(score) - self.dart_cost - (
+            self.turn_cost if dart == 1 else 0.0
         )
+
+    def best_points(self, score, dart, round_start=None, n=5):
+        """
+        The ``n`` best aiming points for a state, with their Q-values.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: point indices (best first) and their
+            Q-values.
+        """
+        q = self.q_values(score, dart, round_start)
+        idx = np.argsort(-q)[:n]
+        return idx, q[idx]
 
     def policy(self, score, dart, round_start):
         """Index of the optimal aiming point for state (score, dart, round_start)."""
