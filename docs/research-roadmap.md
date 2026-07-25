@@ -130,8 +130,9 @@ much smaller set: `mdp_2player.candidate_points` cuts a 1,893-point grid to 195
 the answer by less than 1e-6 darts.
 
 Worth pushing further, because a 10× reduction in the action set is a 10×
-reduction in every solve, and it turns the full 501×501 three-dart two-player
-game from "overnight" into "over lunch". Two routes:
+reduction in every solve. With the reduction in place a full 501×501 three-dart
+two-player leg takes about 15 minutes, so this is what makes the game
+interactive at all. Two routes:
 
 * **Rigorous:** an LP per point testing whether its distribution lies inside the
   convex hull of the retained set. ~7,500 small LPs; certifies that discarding it
