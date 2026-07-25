@@ -14,7 +14,7 @@ A ranked guide to the directions that look most promising, judged on two axes:
 | Single player, memoryless MDP (`darts/mdp.py`) | published | minutes |
 | Single player, 3-dart visits (`darts/mdp_3turn.py`) | solved exactly, values + policy | ~4 s for 501 at 7.4k aiming points, ~15 s at 30k |
 | Two players, 1 dart per turn (`darts/mdp_2player.py`) | solved exactly | one GEMM per diagonal |
-| Two players, 3 darts per turn (`darts/mdp_2player.py`) | solved exactly | dominated by the low-score region; needs a reduced aiming grid |
+| Two players, 3 darts per turn (`darts/mdp_2player.py`) | solved exactly, values + policy | ~15 min for a full 501 leg on a reduced aiming grid (`scripts/solve_2player_leg.py`) |
 | Sets and legs | not started | trivial once leg values exist — see §3.1 |
 
 Two structural facts do most of the work in the current solvers and are worth
