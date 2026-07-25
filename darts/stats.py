@@ -8,10 +8,25 @@ from numba import njit
 def gaussian_filter(board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray) -> np.ndarray:
     """Generates a Gaussian filter with a specified mean and variance.
 
+    .. warning::
+       ``mu`` and ``Sigma`` use opposite index orders, which matters as soon as
+       the throw is not spherically symmetric:
+
+       * ``mu`` is ``(row, column)`` -- ``mu[0]`` shifts down the array (the
+         y direction), ``mu[1]`` shifts across it (the x direction).
+       * ``Sigma`` is in ``(x, y)`` order -- ``Sigma[0, 0]`` is the variance
+         across columns (horizontal), ``Sigma[1, 1]`` the variance down rows
+         (vertical), and ``Sigma[0, 1]`` their covariance with the usual sign
+         (positive tilts the cloud up and to the right on the board).
+
+       So a covariance matrix fitted to throws in ordinary (horizontal,
+       vertical) millimetre coordinates can be passed straight in, but an aim
+       point cannot -- its coordinates must be swapped.
+
     Args:
         board (np.ndarray): The dartboard described by a numpy array.
-        mu (np.ndarray): Mean vector. Should be a length 2 array.
-        Sigma (np.ndarray): Variance matrix. Should be a 2x2 array.
+        mu (np.ndarray): Mean vector, in (row, column) order. Length 2.
+        Sigma (np.ndarray): Covariance matrix in (x, y) order. 2x2.
 
     Returns:
         np.ndarray: Gaussian filter.
@@ -28,8 +43,12 @@ def gaussian_filter(board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray) -> np.
 
     pixels = board.shape[0]
 
-    # Generate a grid of x and y values
-    xx = np.linspace(-board.shape[0] // 2, board.shape[0] // 2, pixels)
+    # Generate a grid of x and y values.
+    # This must have unit spacing and put 0 exactly on pixel `pixels // 2`:
+    # np.linspace(-n//2, n//2, n) has spacing n/(n-1) and straddles zero, which
+    # displaces the throwing distribution from its intended aim point by up to
+    # a pixel, with the error growing towards the edge of the board.
+    xx = (np.arange(pixels) - pixels // 2).astype(np.float64)
     x = np.empty(shape=(xx.size, xx.size), dtype=xx.dtype)
     for j in range(xx.size):
         x[:, j] = xx[j]
