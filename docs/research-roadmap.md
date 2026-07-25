@@ -201,10 +201,20 @@ places to look:
   single-player model can never produce this.
 * **Big lead.** When far ahead, the win-maximising policy should get *more*
   conservative around busts than the darts-minimising one.
-* **How large are these effects?** My expectation is that they are small
-  everywhere except when one player is within one or two visits of finishing —
-  which is worth establishing, because if true it justifies using the much
-  cheaper single-player policy for the whole scoring phase.
+* **How large are these effects?** Now measured, for the one-dart game: ignoring
+  the opponent entirely costs **at most 0.5 percentage points of win probability
+  anywhere on the board**, and the worst cases are all at low scores (0.0049
+  below 60, against 0.0014 above 120). That justifies using the much cheaper
+  single-player policy for the whole scoring phase and solving the two-player
+  game only near the finish — which is also the region where it is cheapest.
+  Worth repeating for the three-dart game, where the endgame effects should be
+  larger, because a visit gives three chances to react to the opponent.
+
+  Beware the obvious-looking measure here: counting states where the two
+  *argmaxes* differ reports ~17% at high scores as well as low, purely because
+  many aiming points are near-ties there and the argmax flips between
+  neighbouring pixels for reasons worth a millionth of a win. Measure the value
+  given up, not the label.
 
 Note also that the *single-player* objective matters here: minimising darts
 thrown treats a bust on the first dart as costing one dart, since the other two
