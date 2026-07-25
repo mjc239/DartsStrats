@@ -8,10 +8,25 @@ from numba import njit
 def gaussian_filter(board: np.ndarray, mu: np.ndarray, Sigma: np.ndarray) -> np.ndarray:
     """Generates a Gaussian filter with a specified mean and variance.
 
+    .. warning::
+       ``mu`` and ``Sigma`` use opposite index orders, which matters as soon as
+       the throw is not spherically symmetric:
+
+       * ``mu`` is ``(row, column)`` -- ``mu[0]`` shifts down the array (the
+         y direction), ``mu[1]`` shifts across it (the x direction).
+       * ``Sigma`` is in ``(x, y)`` order -- ``Sigma[0, 0]`` is the variance
+         across columns (horizontal), ``Sigma[1, 1]`` the variance down rows
+         (vertical), and ``Sigma[0, 1]`` their covariance with the usual sign
+         (positive tilts the cloud up and to the right on the board).
+
+       So a covariance matrix fitted to throws in ordinary (horizontal,
+       vertical) millimetre coordinates can be passed straight in, but an aim
+       point cannot -- its coordinates must be swapped.
+
     Args:
         board (np.ndarray): The dartboard described by a numpy array.
-        mu (np.ndarray): Mean vector. Should be a length 2 array.
-        Sigma (np.ndarray): Variance matrix. Should be a 2x2 array.
+        mu (np.ndarray): Mean vector, in (row, column) order. Length 2.
+        Sigma (np.ndarray): Covariance matrix in (x, y) order. 2x2.
 
     Returns:
         np.ndarray: Gaussian filter.
