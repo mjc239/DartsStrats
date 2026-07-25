@@ -273,10 +273,9 @@ class ThreeDartLeg(_LegBase):
                 kk = self.k_valid[w]
                 Gm[1:kk, m] = 1.0 - self.W[v, w - S[1:kk]]
             Q = PT.T @ Gm + self.co[need].T + self.bust[need].T * e
-            for m, w in enumerate(need):
-                # A dart scoring zero also ends the turn, on w rather than on u.
-                zero_val = e if w == u else 1.0 - self.W[v, w]
-                v3[w - lo3] = (Q[:, m] + self.P0 * zero_val).max()
+            # A dart scoring zero also ends the turn, on w rather than on u.
+            zero_val = np.where(np.array(need) == u, e, 1.0 - self.W[v, need])
+            v3[np.array(need) - lo3] = (Q + self.P0[:, None] * zero_val).max(axis=0)
 
         # ---- dart 2 --------------------------------------------------------
         lo2 = max(2, u - M)
@@ -291,8 +290,10 @@ class ThreeDartLeg(_LegBase):
                 kk = self.k_valid[w]
                 Gm[1:kk, m] = v3[w - S[1:kk] - lo3]
             Q = PT.T @ Gm + self.co[need2].T + self.bust[need2].T * e
-            for m, w in enumerate(need2):
-                v2[w - lo2] = (Q[:, m] + self.P0 * v3[w - lo3]).max()
+            idx2 = np.array(need2)
+            v2[idx2 - lo2] = (
+                Q + self.P0[:, None] * v3[idx2 - lo3]
+            ).max(axis=0)
 
         # ---- dart 1 --------------------------------------------------------
         kk = self.k_valid[u]
