@@ -59,3 +59,46 @@ def region_label(point, board_pixels, quadro=False):
     if quadro and 56.6 <= r < 64.6:
         return f"Q{number}"
     return f"{number}"
+
+
+def aim_description(point, board_pixels, quadro=False):
+    """
+    Describe an aiming point the way you would say it out loud.
+
+    :func:`region_label` returns ``"miss"`` for anything past the double ring,
+    which is unhelpful when the model deliberately aims at the outer edge of a
+    double to protect the number -- a real and common recommendation for weaker
+    players. This names those points by the bed they sit outside.
+
+    Args:
+        point (array-like): [row, column] pixel coordinates.
+        board_pixels (int): resolution of the board array.
+        quadro (bool): label the Quadro ring.
+
+    Returns:
+        str: e.g. ``"T20"``, ``"D16"``, ``"outside D5"``, ``"off the board"``.
+    """
+    c = DARTBOARD_CONSTANTS
+    label = region_label(point, board_pixels, quadro=quadro)
+    if label != "miss":
+        return label
+
+    centre = board_pixels // 2
+    scale = mm_per_pixel(board_pixels)
+    y = (point[0] - centre) * scale
+    x = (point[1] - centre) * scale
+    r = np.hypot(x, y)
+    theta = np.arctan2(y, x)
+
+    # Far enough out that no bed is meaningfully being aimed at.
+    if r > c["DOUBLE_OUTER_RADIUS"] + 25:
+        return "off the board"
+
+    number = None
+    for score, intervals in c["SEGMENTS"].items():
+        for lo, hi in intervals:
+            if lo * np.pi <= theta < hi * np.pi:
+                number = score
+    if number is None:
+        return "off the board"
+    return f"outside D{number}"
