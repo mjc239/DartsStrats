@@ -116,6 +116,29 @@ class ScoreLikelihood:
             total += n * np.log(max(p.get(int(s), 0.0), 1e-300))
         return total
 
+    def conditional_moments_all(self, mu, Sigma, scores):
+        """
+        Exact ``E[Z | X = s]`` and ``E[Z Z^T | X = s]`` for several scores at
+        once.
+
+        The density is evaluated over the whole board once and then split by
+        score, rather than once per score, which is the difference between a
+        fit taking seconds and taking minutes.
+        """
+        pdf = self._pdf(mu, Sigma)
+        out = {}
+        for s in scores:
+            idx = self.index[int(s)]
+            w = pdf[idx]
+            tot = w.sum()
+            if tot <= 0:
+                w = np.ones(len(idx))
+                tot = float(len(idx))
+            z = self.coords[idx]
+            ez = (w @ z) / tot
+            out[int(s)] = (ez, (z * w[:, None]).T @ z / tot)
+        return out
+
     def conditional_moments(self, mu, Sigma, score):
         """
         Exact ``E[Z | X = score]`` and ``E[Z Z^T | X = score]`` under the
@@ -173,14 +196,13 @@ def fit_from_scores(scores, board_pixels=256, mu_init=None, Sigma_init=None,
     history = []
     converged = False
     for it in range(max_iter):
-        # E step: exact conditional moments, cached per distinct score
-        ez_cache, ezz_cache = {}, {}
-        for s in counts:
-            ez_cache[s], ezz_cache[s] = like.conditional_moments(mu, Sigma, s)
+        # E step: exact conditional moments, one density evaluation for all
+        # distinct scores
+        moments = like.conditional_moments_all(mu, Sigma, counts)
 
         # M step: the Gaussian MLE using those moments
-        ez = sum(counts[s] * ez_cache[s] for s in counts) / n
-        ezz = sum(counts[s] * ezz_cache[s] for s in counts) / n
+        ez = sum(counts[s] * moments[s][0] for s in counts) / n
+        ezz = sum(counts[s] * moments[s][1] for s in counts) / n
         mu = ez
         Sigma = ezz - np.outer(ez, ez)
         # keep it positive definite against round-off
