@@ -35,7 +35,10 @@ def region_label(point, board_pixels, quadro=False):
     y = (point[0] - centre) * scale
     x = (point[1] - centre) * scale
     r = np.hypot(x, y)
-    theta = np.arctan2(y, x)
+    # Wrap into [-pi, pi): the segment intervals are half-open, so a point
+    # exactly on the negative x-axis would otherwise match no segment and be
+    # reported as a miss even though it is on the board.
+    theta = np.mod(np.arctan2(y, x) + np.pi, 2 * np.pi) - np.pi
 
     if r < c["INNER_BULLSEYE_RADIUS_MM"]:
         return "BULL"
@@ -88,7 +91,9 @@ def aim_description(point, board_pixels, quadro=False):
     y = (point[0] - centre) * scale
     x = (point[1] - centre) * scale
     r = np.hypot(x, y)
-    theta = np.arctan2(y, x)
+    # Wrap into [-pi, pi): the segment intervals are half-open, so a point
+    # exactly on the negative x-axis would otherwise match no segment.
+    theta = np.mod(np.arctan2(y, x) + np.pi, 2 * np.pi) - np.pi
 
     # Far enough out that no bed is meaningfully being aimed at.
     if r > c["DOUBLE_OUTER_RADIUS"] + 25:
