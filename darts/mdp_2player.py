@@ -43,6 +43,8 @@ sweep, and there are ``O(180 * game_start)`` of those. Reducing the aiming grid
 affordable.
 """
 
+import os
+
 import numpy as np
 
 
@@ -191,20 +193,55 @@ class ThreeDartLeg(_LegBase):
         self.u2_indep = self.u3_indep + M
         self.s_indep = self.u2_indep + M
 
-    def solve(self, tol=1e-13, max_iter=500, progress=False):
+    def solve(self, tol=1e-13, max_iter=500, progress=False,
+              checkpoint_path=None, checkpoint_every=25, resume=False):
+        """
+        Solve the leg.
+
+        A full 501 leg is a long job, so it can checkpoint after every
+        ``checkpoint_every`` diagonals and be resumed from where it stopped.
+        Because the diagonals are processed strictly in order of increasing
+        total score, and everything a later diagonal needs lives in ``W``,
+        ``Y3`` and ``Y2``, a checkpoint is just those arrays plus the next
+        total to process.
+
+        Args:
+            tol (float): convergence tolerance for each diagonal's fixed point.
+            max_iter (int): safety cap on fixed-point iterations.
+            progress (bool): show a tqdm progress bar over diagonals.
+            checkpoint_path (str): where to write ``.npz`` checkpoints.
+            checkpoint_every (int): diagonals between checkpoints.
+            resume (bool): load ``checkpoint_path`` and continue from it.
+        """
         G = self.game_start
         self.W = np.zeros((G + 1, G + 1))
         self.policy = np.full((G + 1, G + 1), -1, dtype=np.int32)
         self.Y3 = np.full((G + 1, G + 1), np.nan)
         self.Y2 = np.full((G + 1, G + 1), np.nan)
+        done_upto = 0
 
-        diagonals = list(self._diagonals())
+        if resume and checkpoint_path is not None and os.path.exists(checkpoint_path):
+            ck = np.load(checkpoint_path)
+            self.W, self.policy = ck["W"], ck["policy"]
+            self.Y3, self.Y2 = ck["Y3"], ck["Y2"]
+            done_upto = int(ck["done_upto"])
+            print(f"resumed from {checkpoint_path}: totals up to {done_upto} done")
+
+        def save(done):
+            if checkpoint_path is None:
+                return
+            tmp = checkpoint_path + ".tmp.npz"
+            np.savez_compressed(tmp, W=self.W, policy=self.policy, Y3=self.Y3,
+                                Y2=self.Y2, done_upto=done, game_start=G)
+            os.replace(tmp, checkpoint_path)
+
+        diagonals = [d for d in self._diagonals() if d[0][0] + d[1][0] > done_upto]
         if progress:
             from tqdm import tqdm
 
             diagonals = tqdm(diagonals, desc="3-dart leg")
 
-        for us, vs in diagonals:
+        for n_done, (us, vs) in enumerate(diagonals, 1):
             co = self.co[us].T
             bust = self.bust[us].T
             # Dart 3 hands over to the opponent; darts 1 and 2 stay in the turn.
@@ -242,6 +279,11 @@ class ThreeDartLeg(_LegBase):
             self.policy[us, vs] = q1.argmax(axis=0)
             self.Y3[vs, us] = y3
             self.Y2[vs, us] = y2
+
+            if checkpoint_path is not None and n_done % checkpoint_every == 0:
+                save(int(us[0] + vs[0]))
+
+        save(2 * G)
         return self
 
     def _low_turn(self, u, v, e):
