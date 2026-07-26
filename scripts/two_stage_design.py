@@ -17,7 +17,7 @@ is chosen from a noisy stage-one estimate, and compares it with:
 
 The oracle is the ceiling. The question is how close two stages get to it.
 
-Writes ``results/design/two_stage_{band}.csv``.
+Writes ``results/design/two_stage.csv``.
 
 Usage:
     python scripts/two_stage_design.py --bands league club pub
@@ -36,13 +36,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from darts import players
 from darts.dartboards import generate_dartboard
 from darts.fitting import fit_multi_target, simulate_session
-from darts.utils import mm_per_pixel
 
 PIXELS = 256
 TRUE_BIAS = np.array([2.0, -3.0])
 
 _BOARD = None
-_TABLE = None
 
 
 def _board():
@@ -52,14 +50,21 @@ def _board():
     return _BOARD
 
 
-def target_for(sigma_hat):
-    """The best single target for an estimated sigma, from the lookup table."""
-    tbl = _TABLE
-    i = int(np.argmin(np.abs(tbl["sigma_mm"].values - sigma_hat)))
-    return np.array([tbl["best_x_mm"].iloc[i], tbl["best_y_mm"].iloc[i]])
+def target_for(sigma_hat, table):
+    """
+    The best single target for an estimated sigma, from the lookup table.
+
+    ``table`` is passed explicitly rather than read from a module global so the
+    workers do not depend on fork semantics -- macOS spawns instead, and would
+    otherwise start them with an empty table.
+    """
+    sigmas, xs, ys = table
+    i = int(np.argmin(np.abs(sigmas - sigma_hat)))
+    return np.array([xs[i], ys[i]])
 
 
-def run_one(seed, band_sigma, n_total, first_fraction, robust_mm, oracle_mm):
+def run_one(seed, band_sigma, n_total, first_fraction, robust_mm, oracle_mm,
+            table):
     """One simulated player, measured every way, returning sigma estimates."""
     board = _board()
     Sigma = band_sigma ** 2 * np.eye(2)
@@ -90,7 +95,7 @@ def run_one(seed, band_sigma, n_total, first_fraction, robust_mm, oracle_mm):
     sigma_1 = fit(stage1)
     out["stage 1 only"] = sigma_1
     if np.isfinite(sigma_1):
-        chosen = target_for(sigma_1)
+        chosen = target_for(sigma_1, table)
         stage2 = simulate_session([chosen], [n2], TRUE_BIAS, Sigma, board=board,
                                   seed=int(rng.integers(1 << 31)))
         out["two stage"] = fit(stage1 + stage2)
@@ -126,11 +131,12 @@ def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     import pandas as pd
 
-    global _TABLE
     table_path = os.path.join(root, "results", "manifest_best_target.csv")
     if not os.path.exists(table_path):
         raise SystemExit("run scripts/best_target_by_sigma.py first")
-    _TABLE = pd.read_csv(table_path)
+    tbl = pd.read_csv(table_path)
+    table = (tbl["sigma_mm"].values, tbl["best_x_mm"].values,
+             tbl["best_y_mm"].values)
 
     robust = np.load(os.path.join(root, "results", "design", "robust.npz"),
                      allow_pickle=True)
@@ -141,13 +147,13 @@ def main():
     rows = []
     for band in args.bands:
         sigma = players.ABILITY_BANDS[band]
-        oracle_mm = target_for(sigma)
+        oracle_mm = target_for(sigma, table)
         print(f"\n=== {band} (sigma {sigma}) oracle target r="
               f"{np.hypot(*oracle_mm):.0f}mm ===", flush=True)
         t0 = time.perf_counter()
         fn = partial(run_one, band_sigma=sigma, n_total=args.n,
                      first_fraction=args.first_fraction, robust_mm=robust_mm,
-                     oracle_mm=oracle_mm)
+                     oracle_mm=oracle_mm, table=table)
         with Pool(args.procs) as pool:
             out = pool.map(fn, range(5000, 5000 + args.reps))
 

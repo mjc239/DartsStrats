@@ -325,15 +325,27 @@ def best_single_target(I_pts, c):
     return i, float(vals[i]), vals
 
 
-def best_pair(I_pts, c, chunk=256):
+def best_pair(I_pts, c, chunk=None, max_bytes=64 << 20):
     """
     The best equally-weighted two-target design, exhaustively.
 
     Every pair is evaluated -- with a few thousand candidates that is millions
     of 5x5 solves, which is fine batched, and it removes any doubt about a
     greedy search having missed something.
+
+    Args:
+        I_pts (np.ndarray): (n_candidates, p, p) per-throw information.
+        c (np.ndarray): criterion vector.
+        chunk (int): rows of the pair matrix to build at once. By default it is
+            chosen so each block stays near ``max_bytes``, since the block is
+            ``chunk * n * p * p`` doubles and a fine candidate grid would
+            otherwise allocate gigabytes.
+        max_bytes (int): target size of one block.
     """
     n = len(I_pts)
+    if chunk is None:
+        per_row = n * I_pts.shape[1] * I_pts.shape[2] * 8
+        chunk = max(1, min(n, int(max_bytes // max(per_row, 1))))
     best = (np.inf, -1, -1)
     for lo in range(0, n, chunk):
         hi = min(lo + chunk, n)
