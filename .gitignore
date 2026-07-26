@@ -120,3 +120,9 @@ dmypy.json
 # Large precomputed transition probability files (too large for GitHub)
 notebooks/transition_probs/360-pixel_20-sigma-40-margin
 notebooks/transition_probs/checkout_360-pixel_20-sigma-40-margin
+
+# Solved two-player legs: ~7MB per ability band and fully regenerable with
+# scripts/solve_legs_all_bands.py (~10 min per band, checkpointed). The
+# manifest CSV holds the numbers the match model actually needs.
+results/two_player/*.npz
+results/single_player/grid/

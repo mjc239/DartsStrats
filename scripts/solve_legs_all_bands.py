@@ -29,6 +29,15 @@ from darts.mdp_2player import OneDartLeg, ThreeDartLeg, candidate_points
 from darts.transitions import transition_arrays
 
 
+def _write_manifest(root, rows):
+    """Write the manifest after every band, so an interrupted sweep still
+    leaves usable numbers behind."""
+    import pandas as pd
+    path = os.path.join(root, "results", "manifest_two_player.csv")
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return path
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bands", nargs="*", default=None)
@@ -96,6 +105,7 @@ def main():
                      "p_first_3dart": (float(payload["W_three"][G, G])
                                        if "W_three" in payload else None)})
         print(f"  wrote {os.path.relpath(path, root)}", flush=True)
+        _write_manifest(root, rows)
 
     import pandas as pd
     df = pd.DataFrame(rows)
