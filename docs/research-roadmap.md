@@ -15,7 +15,9 @@ A ranked guide to the directions that look most promising, judged on two axes:
 | Single player, 3-dart visits (`darts/mdp_3turn.py`) | solved exactly, values + policy | ~4 s for 501 at 7.4k aiming points, ~15 s at 30k |
 | Two players, 1 dart per turn (`darts/mdp_2player.py`) | solved exactly | one GEMM per diagonal |
 | Two players, 3 darts per turn (`darts/mdp_2player.py`) | solved exactly, values + policy | ~15 min for a full 501 leg on a reduced aiming grid (`scripts/solve_2player_leg.py`) |
-| Sets and legs | not started | trivial once leg values exist — see §3.1 |
+| Sets and legs (`darts/match.py`) | solved exactly | a small Markov chain, instant |
+| Fitting a player from scores (`darts/fitting.py`) | exact EM, SQUAREM accelerated | ~0.5 s for a 200-dart session |
+| Measurement design (`darts/design.py`) | optimum found and certified | ~1 s per ability for the whole board |
 
 Two structural facts do most of the work in the current solvers and are worth
 keeping in mind for anything new:
@@ -267,7 +269,33 @@ Differentiate the answer with respect to the model inputs:
 
 * **Feasibility:** high. **Applicability:** very high.
 
-### 4.3 Calibration against real match data
+### 4.3 A measurement protocol — **done, and it changed the answer to §1.1**
+
+Fitting `Sigma` from a player's darts (§1.1) silently assumes you know where they
+were aiming and that one target is as good as another. Neither holds.
+`darts/design.py` computes the Fisher information for `(b, Sigma)` at every
+target on the board — one FFT per score gives the whole map — and searches for
+the targets that measure a player most precisely, with a general equivalence
+theorem certificate proving the optimum rather than merely searching for it.
+
+Three results that change how §1.1 should be done in practice:
+
+* **The target matters enormously.** T20, where a player would naturally throw,
+  costs a factor of 4.6 to 191 in variance depending on ability. Tight players
+  (`σ ≤ 11`mm) are measured best at the *bull*, whose two rings sit at exactly
+  the right scale; looser players out at ~134mm and then, past ~22mm, back in at
+  the treble ring. `results/manifest_best_target.csv` is the lookup table.
+* **Splitting the session across targets** is nearly worthless asymptotically
+  (0–17%) but valuable at real session lengths, because from a single target an
+  unluckily tight group is indistinguishable from a displaced aim point. That is
+  a global feature of the likelihood, invisible to Fisher information.
+* **A two-stage session** — a first batch on the robust design, the rest at the
+  target the rough estimate points to — gets most of the way to the unattainable
+  oracle.
+
+What remains is to run it on a real player rather than a simulated one.
+
+### 4.4 Calibration against real match data
 
 The model currently maps `σ` to a 3-dart average. That mapping should be checked
 the other way round: take published professional statistics (3-dart averages,
