@@ -1,0 +1,15 @@
+band,sigma_mm,objective,aiming_points,value_501,seconds,path,three_dart_average,darts_from_170,darts_from_40
+elite,6.5,darts,29497,15.0121,11.3,results/single_player/elite_darts.npz,100.12,6.199,2.222
+elite,6.5,visits,29497,5.321,9.6,results/single_player/elite_visits.npz,,,
+pro,8.0,darts,29669,16.9179,10.2,results/single_player/pro_darts.npz,88.84,7.163,2.712
+pro,8.0,visits,29669,5.9737,10.1,results/single_player/pro_visits.npz,,,
+county,10.0,darts,29829,19.6486,11.7,results/single_player/county_darts.npz,76.49,8.444,3.413
+county,10.0,visits,29829,6.9045,9.8,results/single_player/county_visits.npz,,,
+super_league,13.0,darts,30065,24.167,11.0,results/single_player/super_league_darts.npz,62.19,10.571,4.638
+super_league,13.0,visits,30065,8.4696,11.1,results/single_player/super_league_visits.npz,,,
+league,16.0,darts,30349,28.9845,11.5,results/single_player/league_darts.npz,51.86,12.982,6.141
+league,16.0,visits,30349,10.1873,11.2,results/single_player/league_visits.npz,,,
+club,20.0,darts,30661,35.1277,12.5,results/single_player/club_darts.npz,42.79,16.509,8.606
+club,20.0,visits,30661,12.4716,13.2,results/single_player/club_visits.npz,,,
+pub,28.0,darts,31381,46.4907,15.3,results/single_player/pub_darts.npz,32.33,24.47,15.111
+pub,28.0,visits,31381,17.0226,26.0,results/single_player/pub_visits.npz,,,

@@ -73,3 +73,44 @@ def test_aim_points_inside_board():
     )
     assert r.max() < radius + 2.0
     assert len(np.unique(pts, axis=0)) == len(pts)
+
+
+def test_labels_on_the_negative_x_axis():
+    """
+    Points exactly on the negative x axis must be labelled as being on the
+    board.
+
+    arctan2 returns exactly +pi there and the segment intervals are half-open,
+    so an unwrapped angle matches no segment. generate_dartboard was fixed for
+    this; region_label and aim_description had the same latent bug, which an
+    earlier validation missed because it ran before the board itself was fixed,
+    at which point the two agreed on the wrong answer.
+    """
+    from darts.utils import aim_description, region_label
+
+    for px in (128, 256, 512):
+        centre = px // 2
+        mmpp = 2 * DARTBOARD_CONSTANTS["DARTBOARD_RADIUS_MM"] / px
+        board, _ = generate_dartboard(px)
+        for r_mm, expect in [(120.0, "11"), (166.0, "D11"), (103.0, "T11")]:
+            col = centre - int(round(r_mm / mmpp))
+            assert region_label([centre, col], px) == expect
+            assert int(board[centre, col]) == {"11": 11, "D11": 22, "T11": 33}[expect]
+        # just outside the double ring, the same axis
+        col = centre - int(round(172.0 / mmpp))
+        assert aim_description([centre, col], px) == "outside D11"
+
+
+def test_region_label_agrees_with_the_board_everywhere():
+    from darts.utils import region_label
+
+    for px in (128, 256):
+        tr = transition_arrays(px, 10.0, point_stride=1)
+        board = tr["board"]
+        for p in tr["points"]:
+            lab = region_label(p, px)
+            v = {"BULL": 50, "25": 25, "miss": 0}.get(lab)
+            if v is None:
+                v = (3 * int(lab[1:]) if lab[0] == "T"
+                     else 2 * int(lab[1:]) if lab[0] == "D" else int(lab))
+            assert v == int(board[p[0], p[1]]), (p, lab, board[p[0], p[1]])
