@@ -547,6 +547,44 @@ def robust_design(scenarios, k, max_swaps=50, seed_points=(), n_restarts=8,
     return best[0], float(best[1]), best[2]
 
 
+def darts_to_detect(per_throw_sd, delta, alpha=0.05, power=0.8, sessions=2):
+    """
+    Darts per session needed to detect an improvement of ``delta`` mm.
+
+    The test is a two-sided z-test on the difference of two session estimates
+    (or one estimate against a known baseline, with ``sessions=1``). With a
+    per-throw standard deviation ``S`` -- so a session of ``n`` darts measures
+    sigma to ``S / sqrt(n)`` -- the difference of two sessions has standard
+    error ``S * sqrt(2 / n)`` and the requirement is
+
+        n = sessions * S^2 * (z_{1-alpha/2} + z_{power})^2 / delta^2
+
+    ``S`` is what the design work computes: ``sqrt(c^T M^-1 c)`` at the chosen
+    target, i.e. ``se_from_200_darts * sqrt(200)`` read off the manifests.
+
+    This is the asymptotic answer. The simulation studies show the Fisher
+    prediction is accurate at the well-chosen targets from a few hundred darts
+    -- and the n this returns is comfortably past that -- but a single-target
+    T20 session stays above its bound far longer, so treat the T20 column as
+    optimistic.
+
+    Args:
+        per_throw_sd (float or array): ``S`` in mm per sqrt(dart).
+        delta (float): the improvement to detect, in mm of sigma.
+        alpha (float): two-sided false-positive rate.
+        power (float): probability of detecting a real improvement of delta.
+        sessions (int): 2 for before-and-after, 1 against a known baseline.
+
+    Returns:
+        float or np.ndarray: darts per session.
+    """
+    from statistics import NormalDist
+    z = NormalDist().inv_cdf(1 - alpha / 2) + NormalDist().inv_cdf(power)
+    S = np.asarray(per_throw_sd, dtype=float)
+    n = sessions * (S * z / delta) ** 2
+    return float(n) if np.isscalar(per_throw_sd) else n
+
+
 def design_efficiency(I_pts_at_truth, c_at_truth, design_idx, weights=None):
     """
     How well a design does at a sigma other than the one it was built for,
