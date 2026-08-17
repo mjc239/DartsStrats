@@ -317,6 +317,14 @@ class ParticleThrowPosterior(_BoardPixels):
     ``drift`` is the hook the notebooks keep asking for: a per-dart random walk
     on the parameters, which turns the filter from an estimator of a fixed
     player into a tracker of a changing one. Left at zero it is an estimator.
+
+    Give it as a dict -- ``{"sigma": 0.002, "bias": 0.25}`` -- because the
+    parameters live in *different units* and a single number for all of them is
+    meaningless: the sigma components are logarithms, so 0.002 is a 0.2%
+    multiplicative wobble per dart, while the bias components are millimetres.
+    A scalar 0.02 turns out to be an enormous drift on the spread and a
+    negligible one on the pull, which tracks a drifting player *worse* than not
+    modelling drift at all. A raw length-5 vector is accepted for full control.
     """
 
     N_PARAM = 5          # log sx, log sy, atanh rho, bx, by
@@ -329,7 +337,7 @@ class ParticleThrowPosterior(_BoardPixels):
         self.rng = np.random.default_rng() if rng is None else rng
         self.delta = float(delta)
         self.ess_fraction = float(ess_fraction)
-        self.drift = np.zeros(self.N_PARAM) + np.asarray(drift, float)
+        self.drift = self._parse_drift(drift)
         self.tilt = bool(tilt)
         self.n_updates = 0
         self.n_resamples = 0
@@ -341,6 +349,24 @@ class ParticleThrowPosterior(_BoardPixels):
                                              sigma_spread, ratio_spread, bias_sd)
         n = len(self._theta)
         self.log_w = np.full(n, -np.log(n))
+
+    def _parse_drift(self, drift):
+        """
+        Per-dart random-walk scale, as a length-5 vector in the transformed
+        parameter space ``(log sx, log sy, atanh rho, b_x, b_y)``.
+
+        A dict is the sane way to say this, since the log-sigma and millimetre
+        components are not comparable quantities.
+        """
+        out = np.zeros(self.N_PARAM)
+        if isinstance(drift, dict):
+            s = float(drift.get("sigma", 0.0))
+            out[0] = out[1] = s
+            out[2] = float(drift.get("rho", 0.0))
+            b = float(drift.get("bias", 0.0))
+            out[3] = out[4] = b
+            return out
+        return out + np.asarray(drift, float)
 
     # -- prior --------------------------------------------------------------
     def _sample_prior(self, n, band, sigma_spread, ratio_spread, bias_sd):

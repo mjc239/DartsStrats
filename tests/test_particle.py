@@ -143,9 +143,61 @@ def test_drift_keeps_the_belief_open(board_and_checkouts, darts):
     kw = dict(band="league", board=board, checkouts=co)
     still = _run(ParticleThrowPosterior(400, rng=np.random.default_rng(4), **kw),
                  darts)
-    moving = _run(ParticleThrowPosterior(400, drift=0.02,
+    moving = _run(ParticleThrowPosterior(400, drift={"sigma": 0.004, "bias": 0.3},
                                          rng=np.random.default_rng(4), **kw), darts)
     assert moving.sd_ratio() > still.sd_ratio()
+
+
+def test_drift_is_named_because_the_units_differ(board_and_checkouts):
+    """
+    The parameters live in a transformed space where log-sigma and millimetre
+    components are not comparable, so a scalar drift means different things to
+    each. The dict form must put each number where it belongs.
+    """
+    board, co = board_and_checkouts
+    kw = dict(board=board, checkouts=co, rng=np.random.default_rng(0))
+    named = ParticleThrowPosterior(20, drift={"sigma": 0.002, "bias": 0.25}, **kw)
+    assert named.drift == pytest.approx([0.002, 0.002, 0.0, 0.25, 0.25])
+    assert ParticleThrowPosterior(20, drift=0.01, **kw).drift == pytest.approx(
+        [0.01] * 5)
+
+
+def test_drift_actually_tracks_a_changing_player(board_and_checkouts):
+    """
+    The point of drift, and the thing a scalar gets wrong: on a player whose
+    pull grows through a session, the tracker must follow it and the plain
+    estimator must lag.
+    """
+    board, co = board_and_checkouts
+    px = board.shape[0]
+    mmpp = mm_per_pixel(px)
+    L = np.linalg.cholesky(TRUE_S)
+    rng = np.random.default_rng(7)
+    targets = [np.array([0.0, 103.0]), np.array([-80.0, -40.0]),
+               np.array([0.0, 0.0]), np.array([100.0, 60.0])]
+    seq, truth = [], []
+    n = 800
+    for i in range(n):
+        b = np.array([0.0, -14.0 * i / n])          # pull grows to 14 mm
+        t = targets[i % len(targets)]
+        land = t + b + L @ rng.standard_normal(2)
+        col = int(round(land[0] / mmpp)) + px // 2
+        row = int(round(land[1] / mmpp)) + px // 2
+        seq.append((t, int(board[row, col]) if 0 <= row < px and 0 <= col < px else 0))
+        truth.append(b[1])
+    truth = np.array(truth)
+
+    err = {}
+    for label, drift in [("estimator", 0.0),
+                         ("tracker", {"sigma": 0.002, "bias": 0.25})]:
+        pf = ParticleThrowPosterior(400, band="league", drift=drift, board=board,
+                                    checkouts=co, rng=np.random.default_rng(5))
+        trace = []
+        for t, v in seq:
+            pf.update(t, v, pixel=False)
+            trace.append(pf.mean_bias()[1])
+        err[label] = np.abs(np.array(trace[-200:]) - truth[-200:]).mean()
+    assert err["tracker"] < 0.5 * err["estimator"]
 
 
 def test_tilt_is_off_unless_asked_for(board_and_checkouts):
