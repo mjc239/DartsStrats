@@ -110,24 +110,16 @@ def bias_prior(biases, sd_mm=8.0):
 # The posterior
 # --------------------------------------------------------------------------
 
-class ThrowPosterior:
+class _BoardPixels:
     """
-    A discrete posterior over ``(Sigma, b)``, updated one dart at a time.
+    The board, precomputed into what a per-dart likelihood needs: the
+    millimetre coordinates of every pixel, indexed by the score in it.
 
-    The grid is the outer product of a covariance grid and a bias grid, so the
-    log posterior is a (K, M) array and the marginals are sums along an axis.
-
-    The per-dart likelihood is exact on the pixel grid: for observed score
-    value ``s`` thrown at ``t``,
-
-        p(s | t, Sigma, b) = sum over pixels scoring s of N(t + b, Sigma)
+    Shared by the grid posterior and the particle filter, which differ only in
+    how they carry the belief, not in how a dart is scored.
     """
 
-    def __init__(self, Sigmas, biases=None, prior=None, board_pixels=256,
-                 board=None, checkouts=None):
-        self.Sigmas = np.asarray(Sigmas, float).reshape(-1, 2, 2)
-        self.biases = (np.zeros((1, 2)) if biases is None
-                       else np.asarray(biases, float).reshape(-1, 2))
+    def __init__(self, board_pixels=256, board=None, checkouts=None):
         if board is None:
             board, checkouts = generate_dartboard(board_pixels)
         elif checkouts is None:
@@ -144,6 +136,44 @@ class ThrowPosterior:
         self._index = {int(s): np.flatnonzero(flat == s) for s in np.unique(flat)}
         self._co_index = {int(s): np.flatnonzero((flat == s) & co)
                           for s in np.unique(flat[co])}
+
+    def point_to_mm(self, point):
+        """(row, col) pixel -> (x, y) mm from the centre."""
+        c = self.pixels // 2
+        return np.array([(point[1] - c) * self.mm_per_pixel,
+                         (point[0] - c) * self.mm_per_pixel])
+
+    def _pixels_for(self, score, checkout):
+        idx = (self._co_index if checkout else self._index).get(int(score))
+        if idx is None or len(idx) == 0:
+            raise ValueError(f"score {score} (checkout={checkout}) unreachable")
+        return idx
+
+
+class ThrowPosterior(_BoardPixels):
+    """
+    A discrete posterior over ``(Sigma, b)``, updated one dart at a time.
+
+    The grid is the outer product of a covariance grid and a bias grid, so the
+    log posterior is a (K, M) array and the marginals are sums along an axis.
+
+    The per-dart likelihood is exact on the pixel grid: for observed score
+    value ``s`` thrown at ``t``,
+
+        p(s | t, Sigma, b) = sum over pixels scoring s of N(t + b, Sigma)
+
+    Exact, and priced accordingly: the cost is the number of grid points times
+    the pixels of the observed score, and a product grid over ``d`` parameters
+    has ``n**d`` points. Past about four parameters use
+    :class:`ParticleThrowPosterior` instead.
+    """
+
+    def __init__(self, Sigmas, biases=None, prior=None, board_pixels=256,
+                 board=None, checkouts=None):
+        super().__init__(board_pixels, board, checkouts)
+        self.Sigmas = np.asarray(Sigmas, float).reshape(-1, 2, 2)
+        self.biases = (np.zeros((1, 2)) if biases is None
+                       else np.asarray(biases, float).reshape(-1, 2))
 
         # per-Sigma inverse entries and normalisation, precomputed once
         det = (self.Sigmas[:, 0, 0] * self.Sigmas[:, 1, 1]
@@ -165,12 +195,6 @@ class ThrowPosterior:
         self.log_post = self.log_prior.copy()
         self.n_updates = 0
 
-    # -- geometry -----------------------------------------------------------
-    def point_to_mm(self, point):
-        c = self.pixels // 2
-        return np.array([(point[1] - c) * self.mm_per_pixel,
-                         (point[0] - c) * self.mm_per_pixel])
-
     # -- likelihood ---------------------------------------------------------
     def _log_likelihood(self, aim_mm, score, checkout=False, max_bytes=64 << 20):
         """
@@ -180,9 +204,7 @@ class ThrowPosterior:
         covariances by a hundred biases, against a few thousand pixels of a
         score, is a gigabyte if formed at once.
         """
-        idx = (self._co_index if checkout else self._index).get(int(score))
-        if idx is None or len(idx) == 0:
-            raise ValueError(f"score {score} (checkout={checkout}) unreachable")
+        idx = self._pixels_for(score, checkout)
         # d[m, n] = pixel_n - (aim + bias_m)
         centres = np.asarray(aim_mm, float)[None, :] + self.biases      # (M, 2)
         dx = self._coords[idx, 0][None, :] - centres[:, 0][:, None]     # (M, N)
@@ -262,6 +284,249 @@ class ThrowPosterior:
 # --------------------------------------------------------------------------
 # Acting on it
 # --------------------------------------------------------------------------
+
+class ParticleThrowPosterior(_BoardPixels):
+    """
+    The same belief over ``(Sigma, b)``, carried by particles instead of a grid.
+
+    :class:`ThrowPosterior` is exact and costs ``n**d`` grid points, which is
+    fine for an evening's analysis and runs out of room at about four
+    parameters -- a second a dart, with no headroom and a fifth parameter
+    costing another factor of five. This is the version for advising a player
+    between darts.
+
+    It fixes *both* halves of that second. The belief update is over
+    ``n_particles`` points rather than the whole grid; and because the
+    recommender averages Q-values over whatever support the belief offers, the
+    particles group into a few dozen distinct (covariance, shift) pairs and
+    shrink that sum too. Replacing the grid with a small support set is the
+    fix; a Laplace approximation would have addressed only the first half.
+
+    **Static parameters need rejuvenation.** A throw's shape does not evolve
+    between darts, so plain sequential importance resampling degenerates: the
+    particles collapse onto a handful of duplicated values and the posterior
+    reports false certainty. This uses the Liu-West filter -- after resampling,
+    each particle is shrunk toward the weighted mean and jittered, in a way
+    that preserves the first two moments of the belief. ``delta`` sets the
+    trade-off: near 1 is faithful and slow to explore, lower diversifies harder.
+
+    Parameters live in a transformed space -- ``log sigma_x``, ``log sigma_y``,
+    ``atanh rho``, ``b_x``, ``b_y`` -- so that jitter can never produce a
+    negative spread or a correlation outside (-1, 1).
+
+    ``drift`` is the hook the notebooks keep asking for: a per-dart random walk
+    on the parameters, which turns the filter from an estimator of a fixed
+    player into a tracker of a changing one. Left at zero it is an estimator.
+    """
+
+    N_PARAM = 5          # log sx, log sy, atanh rho, bx, by
+
+    def __init__(self, n_particles=500, band="league", tilt=False,
+                 board_pixels=256, board=None, checkouts=None, rng=None,
+                 delta=0.98, ess_fraction=0.5, drift=0.0, particles=None,
+                 sigma_spread=1.4, ratio_spread=1.35, bias_sd=8.0):
+        super().__init__(board_pixels, board, checkouts)
+        self.rng = np.random.default_rng() if rng is None else rng
+        self.delta = float(delta)
+        self.ess_fraction = float(ess_fraction)
+        self.drift = np.zeros(self.N_PARAM) + np.asarray(drift, float)
+        self.tilt = bool(tilt)
+        self.n_updates = 0
+        self.n_resamples = 0
+
+        if particles is not None:
+            self._theta = np.asarray(particles, float).reshape(-1, self.N_PARAM)
+        else:
+            self._theta = self._sample_prior(int(n_particles), band,
+                                             sigma_spread, ratio_spread, bias_sd)
+        n = len(self._theta)
+        self.log_w = np.full(n, -np.log(n))
+
+    # -- prior --------------------------------------------------------------
+    def _sample_prior(self, n, band, sigma_spread, ratio_spread, bias_sd):
+        """
+        Draw from the same prior the grid uses: lognormal on the overall size
+        centred on the named band, lognormal on the axis ratio centred on
+        round, and a Gaussian on the bias centred on no pull.
+        """
+        from darts import players
+        centre = (players.ABILITY_BANDS[band] if isinstance(band, str)
+                  else float(band))
+        size = np.log(centre) + np.log(sigma_spread) * self.rng.standard_normal(n)
+        lr = np.log(ratio_spread) * self.rng.standard_normal(n)
+        # size is the isotropic equivalent; split it into the two axes by the
+        # ratio, holding sqrt(tr/2) at the drawn size
+        r = np.exp(lr)
+        scale = np.sqrt(2.0 / (1.0 + r ** 2))
+        log_sx = size + np.log(scale)
+        log_sy = log_sx + lr
+        rho = (np.arctanh(np.clip(0.3 * self.rng.standard_normal(n), -0.9, 0.9))
+               if self.tilt else np.zeros(n))
+        b = bias_sd * self.rng.standard_normal((n, 2))
+        return np.column_stack([log_sx, log_sy, rho, b])
+
+    # -- the belief, in useful coordinates ----------------------------------
+    @property
+    def weights(self):
+        w = np.exp(self.log_w - self.log_w.max())
+        return w / w.sum()
+
+    @property
+    def sigma_xy(self):
+        return np.exp(self._theta[:, :2])
+
+    @property
+    def rho(self):
+        return np.tanh(self._theta[:, 2])
+
+    @property
+    def biases(self):
+        return self._theta[:, 3:5]
+
+    @property
+    def Sigmas(self):
+        sx, sy = self.sigma_xy[:, 0], self.sigma_xy[:, 1]
+        c = self.rho * sx * sy
+        out = np.empty((len(sx), 2, 2))
+        out[:, 0, 0] = sx ** 2
+        out[:, 1, 1] = sy ** 2
+        out[:, 0, 1] = out[:, 1, 0] = c
+        return out
+
+    def ess(self):
+        """Effective sample size: how many particles are really contributing."""
+        w = self.weights
+        return float(1.0 / (w ** 2).sum())
+
+    # -- likelihood and update ----------------------------------------------
+    def _log_likelihood(self, aim_mm, score, checkout=False):
+        """(n_particles,) log likelihood of one dart, each at its own theta."""
+        idx = self._pixels_for(score, checkout)
+        z = self._coords[idx]                                   # (N, 2)
+        centres = np.asarray(aim_mm, float)[None, :] + self.biases   # (P, 2)
+        dx = z[None, :, 0] - centres[:, 0][:, None]             # (P, N)
+        dy = z[None, :, 1] - centres[:, 1][:, None]
+
+        sx, sy = self.sigma_xy[:, 0], self.sigma_xy[:, 1]
+        r = self.rho
+        det = (sx * sy) ** 2 * (1.0 - r ** 2)
+        a00 = (sy ** 2) / det
+        a11 = (sx ** 2) / det
+        a01 = -(r * sx * sy) / det
+        q = (a00[:, None] * dx ** 2 + 2 * a01[:, None] * dx * dy
+             + a11[:, None] * dy ** 2)
+        m = (-0.5 * q - np.log(2 * np.pi * np.sqrt(det))[:, None]
+             + 2 * np.log(self.mm_per_pixel))
+        top = m.max(axis=1, keepdims=True)
+        return top[:, 0] + np.log(np.exp(m - top).sum(axis=1))
+
+    def update(self, aim, score, checkout=False, pixel=True):
+        """Fold in one dart, resampling and rejuvenating when needed."""
+        aim_mm = self.point_to_mm(aim) if pixel else np.asarray(aim, float)
+        if self.drift.any():
+            self._theta = self._theta + self.drift * self.rng.standard_normal(
+                self._theta.shape)
+            if not self.tilt:
+                self._theta[:, 2] = 0.0
+        self.log_w = self.log_w + self._log_likelihood(aim_mm, score, checkout)
+        self.log_w -= self.log_w.max()
+        self.n_updates += 1
+        if self.ess() < self.ess_fraction * len(self._theta):
+            self._resample()
+        return self
+
+    def _resample(self):
+        """Systematic resampling, then a Liu-West shrink-and-jitter."""
+        w = self.weights
+        n = len(w)
+        # systematic resampling: lower variance than multinomial
+        u = (self.rng.random() + np.arange(n)) / n
+        idx = np.searchsorted(np.cumsum(w), u)
+        idx = np.clip(idx, 0, n - 1)
+
+        mean = w @ self._theta
+        centred = self._theta - mean
+        cov = (centred * w[:, None]).T @ centred
+        a = (3 * self.delta - 1) / (2 * self.delta)
+        h2 = 1.0 - a ** 2
+
+        shrunk = a * self._theta[idx] + (1 - a) * mean
+        try:
+            L = np.linalg.cholesky(h2 * cov + 1e-12 * np.eye(self.N_PARAM))
+        except np.linalg.LinAlgError:
+            L = np.diag(np.sqrt(np.maximum(h2 * np.diag(cov), 1e-12)))
+        self._theta = shrunk + self.rng.standard_normal((n, self.N_PARAM)) @ L.T
+        if not self.tilt:
+            self._theta[:, 2] = 0.0
+        self.log_w = np.full(n, -np.log(n))
+        self.n_resamples += 1
+
+    # -- summaries, matching ThrowPosterior ---------------------------------
+    def mean_sigma_xy(self):
+        w = self.weights
+        s = self.sigma_xy
+        return float(w @ s[:, 0]), float(w @ s[:, 1])
+
+    def mean_ratio(self):
+        w = self.weights
+        s = self.sigma_xy
+        return float(w @ (s[:, 1] / s[:, 0]))
+
+    def sd_ratio(self):
+        w = self.weights
+        r = self.sigma_xy[:, 1] / self.sigma_xy[:, 0]
+        m = w @ r
+        return float(np.sqrt(w @ (r - m) ** 2))
+
+    def mean_isotropic(self):
+        w = self.weights
+        s = self.sigma_xy
+        return float(w @ np.sqrt((s[:, 0] ** 2 + s[:, 1] ** 2) / 2))
+
+    def mean_bias(self):
+        return self.weights @ self.biases
+
+    def sd_bias(self):
+        w = self.weights
+        m = w @ self.biases
+        return np.sqrt(w @ (self.biases - m) ** 2)
+
+    def mean_rho(self):
+        return float(self.weights @ self.rho)
+
+    def map_estimate(self):
+        i = int(np.argmax(self.log_w))
+        return self.Sigmas[i], self.biases[i]
+
+    # -- what the recommender needs -----------------------------------------
+    def support_groups(self, recommender, bias_step=None):
+        """
+        Collapse the particles to ``(k, bias, weight)`` triples.
+
+        Two quantisations, both of which the recommender imposes anyway: each
+        particle's covariance is mapped to the nearest *solved* one, and its
+        bias is snapped to the aiming grid, since an aim point can only be
+        displaced by whole grid steps. Particles agreeing on both are merged,
+        which is what makes the Q-average cheap.
+        """
+        if bias_step is None:
+            pts = recommender.points
+            rows = np.unique(pts[:, 0])
+            step_px = float(np.min(np.diff(rows))) if len(rows) > 1 else 1.0
+            bias_step = step_px * recommender.mm_per_pixel
+
+        d = ((self.Sigmas[:, None] - recommender.Sigmas[None]) ** 2).sum(axis=(2, 3))
+        k = np.argmin(d, axis=1)
+        snapped = np.rint(self.biases / bias_step).astype(int)
+        w = self.weights
+
+        groups = {}
+        for i in range(len(w)):
+            key = (int(k[i]), int(snapped[i, 0]), int(snapped[i, 1]))
+            groups[key] = groups.get(key, 0.0) + w[i]
+        return [(kk, np.array([bx, by]) * bias_step, wt)
+                for (kk, bx, by), wt in groups.items() if wt >= 1e-12]
+
 
 def shift_indices(points, shift_px, pixels):
     """
@@ -383,25 +648,43 @@ class ShapeRecommender:
         np.add.at(out, assign, p)
         return out
 
+    def support(self, posterior, weights=None):
+        """
+        The belief, reduced to what averaging Q-values actually needs:
+        ``(k, bias, weight)`` triples over solved covariances.
+
+        Both posteriors answer this, which is what lets the same recommender
+        drive either. The grid enumerates its cells; the particle filter groups
+        its particles, and that grouping is why the filter speeds up the
+        *recommendation* as well as the belief update -- a few hundred
+        particles collapse to a few dozen distinct (covariance, shift) pairs.
+        """
+        if hasattr(posterior, "support_groups"):
+            return posterior.support_groups(self)
+        w = self.weights_from(posterior) if weights is None else weights
+        out = []
+        for k in range(len(self.Sigmas)):
+            if w[k].sum() < 1e-12:
+                continue
+            for m, wm in enumerate(w[k]):
+                if wm >= 1e-12:
+                    out.append((k, posterior.biases[m], float(wm)))
+        return out
+
     def qbar(self, posterior, score, dart, round_start=None, weights=None):
         """Posterior-weighted Q over actions, averaging over Sigma and bias."""
-        w = self.weights_from(posterior) if weights is None else weights
-        out = None
-        for k in range(len(self.Sigmas)):
-            wk = w[k]
-            if wk.sum() < 1e-12:
-                continue
-            base = self.models[k].q_values(score, dart, round_start)
-            for m, wm in enumerate(wk):
-                if wm < 1e-12:
-                    continue
-                b = posterior.biases[m]
-                if abs(b[0]) < 1e-12 and abs(b[1]) < 1e-12:
-                    q = base
-                else:
-                    idx, _ = self.shift_for(b)
-                    q = base[idx]
-                out = wm * q if out is None else out + wm * q
+        groups = self.support(posterior, weights)
+        out, base, base_k = None, None, -1
+        for k, b, wm in sorted(groups, key=lambda g: g[0]):
+            if k != base_k:
+                base = self.models[k].q_values(score, dart, round_start)
+                base_k = k
+            if abs(b[0]) < 1e-12 and abs(b[1]) < 1e-12:
+                q = base
+            else:
+                idx, _ = self.shift_for(b)
+                q = base[idx]
+            out = wm * q if out is None else out + wm * q
         return out
 
     def recommend(self, posterior, score, dart, round_start=None):
