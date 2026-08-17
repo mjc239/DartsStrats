@@ -295,6 +295,19 @@ Three results that change how §1.1 should be done in practice:
 
 What remains is to run it on a real player rather than a simulated one.
 
+**Two follow-ons are now also done.** `design.darts_to_detect` prices the
+question "did the practice work?": an elite player can prove a millimetre of
+improvement in 235 darts per session, a pub player needs 4,851, and at T20 the
+question stops being answerable at all (notebook 10). And `darts/bayes.py`
+closes the measurement/advice loop entirely: a band-name prior over sigma,
+updated by every dart of ordinary match play, driving posterior-weighted
+Q-value recommendations. A two-band self-assessment error self-corrects within
+a handful of legs; the same error frozen into a fixed chart costs ~0.35 visits
+per leg indefinitely (notebook 11). The natural extensions are a (bias, sigma)
+posterior — where the confounding result starts to matter — and a forgetting
+factor so the posterior tracks a drifting player instead of sharpening
+forever.
+
 ### 4.4 Calibration against real match data
 
 The model currently maps `σ` to a 3-dart average. That mapping should be checked
