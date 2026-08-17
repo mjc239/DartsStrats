@@ -172,8 +172,14 @@ class ThrowPosterior:
                          (point[0] - c) * self.mm_per_pixel])
 
     # -- likelihood ---------------------------------------------------------
-    def _log_likelihood(self, aim_mm, score, checkout=False):
-        """(K, M) log likelihood of one dart."""
+    def _log_likelihood(self, aim_mm, score, checkout=False, max_bytes=64 << 20):
+        """
+        (K, M) log likelihood of one dart.
+
+        Chunked over the covariance axis: a joint grid of a few hundred
+        covariances by a hundred biases, against a few thousand pixels of a
+        score, is a gigabyte if formed at once.
+        """
         idx = (self._co_index if checkout else self._index).get(int(score))
         if idx is None or len(idx) == 0:
             raise ValueError(f"score {score} (checkout={checkout}) unreachable")
@@ -181,12 +187,21 @@ class ThrowPosterior:
         centres = np.asarray(aim_mm, float)[None, :] + self.biases      # (M, 2)
         dx = self._coords[idx, 0][None, :] - centres[:, 0][:, None]     # (M, N)
         dy = self._coords[idx, 1][None, :] - centres[:, 1][:, None]
-        q = (self._a00[:, None, None] * dx[None] ** 2
-             + 2 * self._a01[:, None, None] * (dx * dy)[None]
-             + self._a11[:, None, None] * dy[None] ** 2)                # (K,M,N)
-        m = -0.5 * q + self._lognorm[:, None, None] + self._logarea
-        top = m.max(axis=2, keepdims=True)
-        return (top[:, :, 0] + np.log(np.exp(m - top).sum(axis=2)))
+        dxx, dxy, dyy = dx ** 2, dx * dy, dy ** 2
+
+        K = len(self.Sigmas)
+        per_k = max(dx.size * 8, 1)
+        step = max(1, min(K, int(max_bytes // per_k)))
+        out = np.empty((K, len(self.biases)))
+        for lo in range(0, K, step):
+            hi = min(lo + step, K)
+            q = (self._a00[lo:hi, None, None] * dxx[None]
+                 + 2 * self._a01[lo:hi, None, None] * dxy[None]
+                 + self._a11[lo:hi, None, None] * dyy[None])
+            m = -0.5 * q + self._lognorm[lo:hi, None, None] + self._logarea
+            top = m.max(axis=2, keepdims=True)
+            out[lo:hi] = top[:, :, 0] + np.log(np.exp(m - top).sum(axis=2))
+        return out
 
     def update(self, aim, score, checkout=False, pixel=True):
         """Fold in one dart. ``aim`` is (row, col) pixels, or (x, y) mm."""
@@ -423,7 +438,12 @@ def play_leg(recommender, posterior, true_Sigma, true_bias, rng,
     true_bias = np.asarray(true_bias, float)
     L = np.linalg.cholesky(true_Sigma)
 
-    if policy == "isotropic":
+    if isinstance(policy, tuple):
+        # an explicit belief: play as if the throw were (Sigma, bias)
+        S_belief, b_belief = policy
+        k_fixed = recommender.nearest_sigma(np.asarray(S_belief, float))
+        b_fixed = np.asarray(b_belief, float)
+    elif policy == "isotropic":
         s = isotropic_equivalent(true_Sigma)
         k_fixed = recommender.nearest_sigma(s ** 2 * np.eye(2))
         b_fixed = np.zeros(2)
