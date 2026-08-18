@@ -56,7 +56,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from darts.throw_shape import (ShapeRecommender, ThrowPosterior, correlation,
                                play_leg)
 
-PIXELS = 256
 PARAMS = ("b_x", "b_y", "S_xx", "S_xy", "S_yy")
 
 
@@ -79,7 +78,14 @@ def main():
     ap.add_argument("--multipliers", nargs="*", type=float,
                     default=[0.5, 1.0, 1.5, 2.0],
                     help="perturbation sizes, as multiples of the base step")
+    ap.add_argument("--pixels", type=int, default=256,
+                    help="board resolution; 512 resolves an 8mm bed properly")
+    ap.add_argument("--stride", type=int, default=2,
+                    help="aiming stride in pixels; the grid spacing in mm is "
+                         "stride * 451 / pixels, so 256/2 and 512/4 match")
+    ap.add_argument("--out", default="decision_weight.npz")
     args = ap.parse_args()
+    PIXELS = args.pixels
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sx, sy, rho = args.sigma_x, args.sigma_y, args.rho
@@ -119,7 +125,8 @@ def main():
 
     print(f"\n{len(needed)} covariances to solve")
     t0 = time.perf_counter()
-    rec = ShapeRecommender(np.stack(needed), board_pixels=PIXELS, point_stride=2)
+    rec = ShapeRecommender(np.stack(needed), board_pixels=PIXELS,
+                           point_stride=args.stride)
     print(f"  solved in {time.perf_counter()-t0:.0f}s", flush=True)
 
     post = ThrowPosterior(rec.Sigmas, board=rec.board, checkouts=rec.checkouts)
@@ -186,8 +193,9 @@ def main():
     H_psd = V @ np.diag(np.maximum(w, 0.0)) @ V.T
 
     os.makedirs(os.path.join(root, "results", "design"), exist_ok=True)
-    path = os.path.join(root, "results", "design", "decision_weight.npz")
+    path = os.path.join(root, "results", "design", args.out)
     np.savez(path, H=H, H_psd=H_psd, theta0=theta0, step=step,
+             pixels=PIXELS, stride=args.stride,
              Sigma_true=S_true, bias_true=b_true, eigenvalues=w,
              legs=args.legs, params=np.array(PARAMS),
              **{f"profile_x_{k}": v[0] for k, v in profile.items()},
