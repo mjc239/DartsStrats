@@ -22,10 +22,20 @@ With an estimator of variance ``M(w)^-1 / n``, the expected loss is then
 which is the L-criterion of :func:`darts.design.l_criterion` with ``W = H``.
 c-optimality for sigma alone is the special case ``H = c c^T``.
 
-``H`` is estimated here by finite differences on ``L``, which needs one MDP
-solve per perturbed covariance (a bias perturbation is free -- it only
-translates the action set). Common random numbers are used across evaluations
-so that the differences are far less noisy than the individual losses.
+``H`` is estimated here from ``L``, which needs one MDP solve per perturbed
+covariance (a bias perturbation is free -- it only translates the action set).
+Common random numbers are used across evaluations so that the differences are
+far less noisy than the individual losses.
+
+One wrinkle worth knowing about. ``L`` is not actually smooth: the recommender
+chooses from a finite grid of aiming points, so a small enough parameter error
+changes no recommendation at all and costs *exactly* nothing. Being wrong about
+the bias by less than half a grid step (1.8 mm here) is free, and the loss then
+climbs in steps rather than as a parabola. A single central difference picks up
+that staircase and comes out asymmetric -- 0.105 against 0.211 for a 3 mm error
+either way, which says more about where the grid points fall than about the
+player. The diagonal is therefore fitted by least squares through several
+perturbation sizes, forcing through the origin, which averages the steps out.
 
 Writes ``results/design/decision_weight.npz``.
 
@@ -66,6 +76,9 @@ def main():
     ap.add_argument("--rho", type=float, default=0.2)
     ap.add_argument("--legs", type=int, default=200)
     ap.add_argument("--seed", type=int, default=17)
+    ap.add_argument("--multipliers", nargs="*", type=float,
+                    default=[0.5, 1.0, 1.5, 2.0],
+                    help="perturbation sizes, as multiples of the base step")
     args = ap.parse_args()
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -93,10 +106,11 @@ def main():
 
     want(np.zeros(3))
     for i in range(3):
-        for s in (+1, -1):
-            d = np.zeros(3)
-            d[i] = s * step[2 + i]
-            want(d)
+        for mult in args.multipliers:
+            for s in (+1, -1):
+                d = np.zeros(3)
+                d[i] = s * mult * step[2 + i]
+                want(d)
     for i, j in itertools.combinations(range(3), 2):
         for si, sj in itertools.product((+1, -1), repeat=2):
             d = np.zeros(3)
@@ -137,13 +151,25 @@ def main():
 
     t0 = time.perf_counter()
     H = np.zeros((5, 5))
-    diag = {}
+    profile = {}
+    # Diagonal by least squares through the origin over several magnitudes:
+    # L = 0.5 H x^2, so H = 2 * sum(x^2 L) / sum(x^4). This averages over the
+    # aiming grid's staircase, which a single central difference cannot.
     for i in range(5):
-        lp, lm = loss(d(i, +1)), loss(d(i, -1))
-        H[i, i] = (lp + lm) / step[i] ** 2          # L(0) = 0 exactly
-        diag[PARAMS[i]] = (lp, lm)
-        print(f"  {PARAMS[i]:>5}: L(+)={lp:.4f} L(-)={lm:.4f} "
-              f"H={H[i,i]:.3e}", flush=True)
+        xs, ys = [], []
+        for mult in args.multipliers:
+            for s_ in (+1, -1):
+                v = np.zeros(5)
+                v[i] = s_ * mult * step[i]
+                if tuple(np.round(v[2:], 6)) not in keys:
+                    continue
+                xs.append(s_ * mult * step[i])
+                ys.append(loss(v))
+        xs, ys = np.array(xs), np.array(ys)
+        H[i, i] = 2 * (xs ** 2 * ys).sum() / (xs ** 4).sum()
+        profile[PARAMS[i]] = (xs, ys)
+        shown = "  ".join(f"{x:+.1f}:{y:.3f}" for x, y in zip(xs, ys))
+        print(f"  {PARAMS[i]:>5}: {shown}   H={H[i,i]:.3e}", flush=True)
 
     for i, j in itertools.combinations(range(5), 2):
         pp = loss(d(i, +1) + d(j, +1))
@@ -163,7 +189,9 @@ def main():
     path = os.path.join(root, "results", "design", "decision_weight.npz")
     np.savez(path, H=H, H_psd=H_psd, theta0=theta0, step=step,
              Sigma_true=S_true, bias_true=b_true, eigenvalues=w,
-             legs=args.legs, params=np.array(PARAMS))
+             legs=args.legs, params=np.array(PARAMS),
+             **{f"profile_x_{k}": v[0] for k, v in profile.items()},
+             **{f"profile_y_{k}": v[1] for k, v in profile.items()})
     print(f"\neigenvalues: {np.array2string(w, precision=3)}")
     print(f"({n_neg} negative, clipped to zero)")
     print(f"wrote {path}")
