@@ -1,11 +1,12 @@
 # The experiments
 
-Seventeen notebooks, in five phases. Each phase exists because the previous one
+Eighteen notebooks, in six phases. Each phase exists because the previous one
 exposed a gap, so they read best in order — but every notebook states its own
 question and answers it, and the verdict sections are self-contained.
 
 Everything below is **simulated**. No real player has been measured yet, which is
-the largest single caveat on the whole project.
+the largest single caveat on the whole project -- notebook 18 is the preparation
+for removing it.
 
 All notebooks run on a **512-pixel board** with a **3.52 mm aiming grid**
 (`point_stride=4`). Notebook 02 is where that choice is justified: an 8 mm
@@ -65,6 +66,14 @@ then the model starts growing.
 
 ---
 
+## 6 · Meeting reality
+
+| | asks | finds |
+|---|---|---|
+| **18** Calibrating against real scores | A scoresheet has no aim point. Can the model be fitted to one anyway -- and can it be *refuted*? | **Yes to both.** Above a remaining score of 250 the aim is known to be the treble 20, so a visit total is an exact three-fold convolution and ~2,000 scoring darts measure an elite player to ±0.2mm. More useful: one σ must explain the average, the 180 rate *and* the checkout rate at once. **An isotropic throw says all twenty doubles are equally hard to within 0.22 points; a 1.5:1 tall throw says they vary by 14** -- so ~200 attempts at each of two doubles tests the model's oldest untested assumption |
+
+---
+
 ## Run times
 
 Measured on 4 cores. Notebooks marked ◦ ran with two or three jobs sharing the
@@ -76,6 +85,7 @@ machine, so those are upper bounds.
 | 04 | The two-player leg | 10 s |
 | 01 | Is the value function right? | 1 m 13 |
 | 02 | Millimetres, pixels, and the board | 1 m 16 |
+| 18 | Calibrating against real scores | 1 m 36 |
 | 05 | Checkout charts | 2 m 38 |
 | 10 | Can you tell you've improved? | 2 m 55 |
 | 09 | Where to throw to be measured | 3 m 14 |
@@ -90,7 +100,7 @@ machine, so those are upper bounds.
 | 13 | Aiming off | 69 m |
 | 17 | Measuring all of it | **3 h 25** ◦ |
 
-**Total ≈ 6 h 20.**
+**Total ≈ 6 h 22.**
 
 ### Why the slow ones are slow
 
@@ -135,8 +145,9 @@ These are not in the notebook times. Their outputs are committed under
 | `two_stage_design.py` | 1 h 18 | `design/two_stage.csv` |
 | `decision_weight.py` | 1 h 46 | `design/decision_weight.npz` |
 | `design_simulation_study.py` | **4 h 02** | `design/simulation_league.csv` |
+| `calibration_recovery.py` | 16 m | `calibration/recovery.csv` |
 
-**Total ≈ 7 h 40**, so a full rebuild from nothing is about **14 hours**.
+**Total ≈ 7 h 56**, so a full rebuild from nothing is about **14 hours**.
 
 Run the design scripts in the order listed above: the two-stage study needs the
 lookup table and the robust design, and the simulation study needs the per-band

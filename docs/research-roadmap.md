@@ -23,6 +23,7 @@ also lists what everything costs to re-run.
 | Fitting a player from scores (`darts/fitting.py`) | exact EM, SQUAREM accelerated | ~1.4 s for a 200-dart session |
 | Anisotropic throw with bias (`darts/throw_shape.py`) | solved; grid *and* particle posterior | one MDP solve per covariance; bias is free |
 | Measurement design (`darts/design.py`) | optimum found and certified, c- / D- / L-criteria | ~7 s for the information at every target |
+| Calibration against scores (`darts/calibration.py`) | machinery built and validated; **no real data yet** | exact visit likelihood, milliseconds |
 
 Everything runs on a **512-pixel board** with a **3.52 mm aiming grid**. That is
 not a free parameter: an 8 mm bed is 9.1 pixels across at 512 and 4.5 at 256, and
@@ -279,12 +280,23 @@ a genuinely interesting result.
 * **Applicability:** high, and it is the thing that would make the whole project
   credible to a darts audience rather than a statistics one.
 
-### 4.2 A real player, measured
+### 4.2 A real player, measured — **now blocked only on data**
 
 Everything in this repository is simulated. The measurement protocol is designed,
 certified, priced and tested against synthetic players; it has never been pointed
 at a human. The protocol is short — a couple of hundred darts at the bull —
 and the machinery to fit, advise and track in real time already exists.
+
+Notebook 18 has since built the other half: fitting from *competition* scores, which
+carry no aim point. Above a remaining score of 250 the aim is known to be the treble
+20, so a visit total is an exact three-fold convolution of one dart's score
+distribution, and about 2,000 scoring darts measure an elite player to +/-0.2mm. The
+aim must be held at the bed centre to get there — letting it float reproduces
+notebook 09's confounding and returns a sigma 30% low at small samples.
+
+So there are two independent routes now, testing different things: a session with a
+willing player measures one player *well*, and published match data measures many
+players *badly but at scale*.
 
 The interesting question is not whether it works but where the Gaussian model
 *fails*: a real thrower may be skewed, heavy-tailed, or genuinely different at
@@ -293,7 +305,29 @@ different targets, and only a real session will say.
 * **Feasibility:** high; it needs a player and an evening. **Applicability:** the
   highest of anything here, because every other result is conditional on it.
 
-### 4.3 The prior on a lean is a guess
+### 4.3 Per-double checkout rates — **the sharpest test, and the cheapest data**
+
+An isotropic throw aimed at the centre of a double bed hits it with a probability that
+depends only on the bed's size, and every double bed is the same size. So the model
+claims **all twenty doubles are equally hard**, to within 0.22 percentage points. A
+throw with a 1.5:1 axis ratio instead says they vary by 14 points — 31% at the
+double 20 against 45% at the double 6 — because a bed is 8mm deep and 52mm long
+and which dimension your error runs into depends on where the bed sits.
+
+Distinguishing those needs about **200 attempts at each of two doubles 90 degrees
+apart**, which is less data than any other question in this project and is already
+published for professionals. It tests the assumption that has gone unexamined the
+longest: that a real throw is round.
+
+The confound to design around is practice frequency — a player better at the
+double 20 than the double 3 may have a tall group or may simply have thrown at the 20
+ten thousand more times, which is §1.1 wearing a disguise. Compare doubles matched on
+attempt volume and differing in angle.
+
+* **Feasibility:** high, given the data. **Applicability:** high — a negative
+  result would retire the isotropic model outright.
+
+### 4.4 The prior on a lean is a guess
 
 Notebook 16 found the lean easier to measure than the spread, and worth 0.61
 visits per leg across orientations. But its prior is centred on no lean with a
@@ -326,14 +360,18 @@ forgiving of the way real throws are actually shaped.
 
 ## Suggested order
 
-1. **Measure a real player** (§4.2) — everything else is conditional on it, and
-   it is an evening's work plus a willing thrower.
-2. **Fix the missed-dart likelihood** (§2.1) — three hours of every rebuild, and
-   the difference between 22 ms and half a second a dart in live play.
-3. **Calibration against professional statistics** (§4.1) — the credibility item,
-   and it doubles as evidence for or against §1.1.
-4. **Aim-dependent accuracy** (§1.1) — the biggest remaining modelling gap.
-5. **Action-set reduction** (§2.2), which makes the covariance grids of §3.2 and
+1. **Measure a real player** (§4.2) — everything else is conditional on it, and it is
+   an evening's work plus a willing thrower. The competition-data route of notebook 18
+   needs no thrower at all, only published statistics.
+2. **Test whether the throw is round** (§4.3) — ~200 attempts at each of two doubles,
+   and the model either survives or does not. The cheapest data here is the sharpest
+   test.
+3. **Fix the missed-dart likelihood** (§2.1) — three hours of every rebuild, and the
+   difference between 22 ms and half a second a dart in live play.
+4. **Calibration against professional statistics** (§4.1) — the credibility item, and
+   it doubles as evidence for or against §1.1.
+5. **Aim-dependent accuracy** (§1.1) — the biggest remaining modelling gap.
+6. **Action-set reduction** (§2.2), which makes the covariance grids of §3.2 and
    everything downstream affordable.
-6. **Asymmetric abilities** (§3.1) — cheap, and answers a question players ask.
-7. In-visit correlation (§1.2), board numbering (§5), everything else.
+7. **Asymmetric abilities** (§3.1) — cheap, and answers a question players ask.
+8. In-visit correlation (§1.2), board numbering (§5), everything else.
