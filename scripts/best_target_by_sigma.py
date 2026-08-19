@@ -30,13 +30,13 @@ from darts.design import (best_single_target, c_criterion, candidate_targets,
                           information_maps, optimal_design, sigma_gradient)
 from darts.utils import aim_description, mm_per_pixel
 
-PIXELS = 256
+PIXELS = 512
 N_REF = 200
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stride", type=int, default=2)
+    ap.add_argument("--stride", type=int, default=4)
     ap.add_argument("--sigmas", nargs="*", type=float, default=None)
     args = ap.parse_args()
 

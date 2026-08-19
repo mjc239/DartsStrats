@@ -32,7 +32,7 @@ chooses from a finite grid of aiming points, so a small enough parameter error
 changes no recommendation at all and costs *exactly* nothing. Being wrong about
 the bias by less than half a grid step (1.8 mm here) is free, and the loss then
 climbs in steps rather than as a parabola. A single central difference picks up
-that staircase and comes out asymmetric -- 0.105 against 0.211 for a 3 mm error
+that staircase and comes out asymmetric -- 0.100 against 0.215 for a 3 mm error
 either way, which says more about where the grid points fall than about the
 player. The diagonal is therefore fitted by least squares through several
 perturbation sizes, forcing through the origin, which averages the steps out.
@@ -78,9 +78,9 @@ def main():
     ap.add_argument("--multipliers", nargs="*", type=float,
                     default=[0.5, 1.0, 1.5, 2.0],
                     help="perturbation sizes, as multiples of the base step")
-    ap.add_argument("--pixels", type=int, default=256,
+    ap.add_argument("--pixels", type=int, default=512,
                     help="board resolution; 512 resolves an 8mm bed properly")
-    ap.add_argument("--stride", type=int, default=2,
+    ap.add_argument("--stride", type=int, default=4,
                     help="aiming stride in pixels; the grid spacing in mm is "
                          "stride * 451 / pixels, so 256/2 and 512/4 match")
     ap.add_argument("--out", default="decision_weight.npz")

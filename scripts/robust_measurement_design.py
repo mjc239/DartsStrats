@@ -38,14 +38,14 @@ from darts.design import (c_criterion, candidate_targets, design_information,
                           optimal_design, robust_design, sigma_gradient)
 from darts.utils import aim_description, mm_per_pixel
 
-PIXELS = 256
+PIXELS = 512
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bands", nargs="*", default=None)
     ap.add_argument("--k", nargs="*", type=int, default=[1, 2, 3, 4])
-    ap.add_argument("--stride", type=int, default=2)
+    ap.add_argument("--stride", type=int, default=4)
     args = ap.parse_args()
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -39,7 +39,7 @@ from darts import players
 from darts.dartboards import generate_dartboard
 from darts.fitting import fit_multi_target, simulate_session
 
-PIXELS = 256
+PIXELS = 512
 TRUE_BIAS = np.array([2.0, -3.0])
 
 _BOARD = None

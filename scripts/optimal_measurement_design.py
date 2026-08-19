@@ -39,8 +39,9 @@ from darts.design import (best_pair, best_single_target, c_criterion,
                           optimal_design, sigma_gradient)
 from darts.utils import aim_description, mm_per_pixel
 
-BOARD_PIXELS = 256          # the design criterion is far smoother than the
-                            # MDP value function, so 256 is ample here
+BOARD_PIXELS = 512          # an 8mm bed is 9.1 pixels across here; at 256 it
+                            # is 4.5, and the SE at a bed-centred target such as
+                            # T20 is then off by more than 15%
 N_REFERENCE = 200           # darts in a reference session, for quoting SEs
 
 
@@ -60,7 +61,7 @@ def named_targets(px):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bands", nargs="*", default=None)
-    ap.add_argument("--stride", type=int, default=2,
+    ap.add_argument("--stride", type=int, default=4,
                     help="candidate grid stride in pixels")
     ap.add_argument("--pixels", type=int, default=BOARD_PIXELS)
     ap.add_argument("--outdir", default="results/design")
