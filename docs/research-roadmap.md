@@ -4,20 +4,30 @@ A ranked guide to the directions that look most promising, judged on two axes:
 **feasibility** (can it be computed, and is the data available?) and
 **applicability** (would it change what a real darts player does?).
 
+The experiments themselves are indexed in
+[`notebooks/experiments/README.md`](../notebooks/experiments/README.md), which
+also lists what everything costs to re-run.
+
 ---
 
 ## Where things stand
 
-| Model | Status | Cost at full resolution |
+| Model | Status | Cost |
 |---|---|---|
 | Single dart, expected score | published | FFT, milliseconds |
 | Single player, memoryless MDP (`darts/mdp.py`) | published | minutes |
-| Single player, 3-dart visits (`darts/mdp_3turn.py`) | solved exactly, values + policy | ~4 s for 501 at 7.4k aiming points, ~15 s at 30k |
+| Single player, 3-dart visits (`darts/mdp_3turn.py`) | solved exactly, values + policy | ~2.6 s for 501 at 8.1k aiming points, ~11 s at 32k |
 | Two players, 1 dart per turn (`darts/mdp_2player.py`) | solved exactly | one GEMM per diagonal |
 | Two players, 3 darts per turn (`darts/mdp_2player.py`) | solved exactly, values + policy | ~15 min for a full 501 leg on a reduced aiming grid (`scripts/solve_2player_leg.py`) |
 | Sets and legs (`darts/match.py`) | solved exactly | a small Markov chain, instant |
-| Fitting a player from scores (`darts/fitting.py`) | exact EM, SQUAREM accelerated | ~0.5 s for a 200-dart session |
-| Measurement design (`darts/design.py`) | optimum found and certified | ~1 s per ability for the whole board |
+| Fitting a player from scores (`darts/fitting.py`) | exact EM, SQUAREM accelerated | ~1.4 s for a 200-dart session |
+| Anisotropic throw with bias (`darts/throw_shape.py`) | solved; grid *and* particle posterior | one MDP solve per covariance; bias is free |
+| Measurement design (`darts/design.py`) | optimum found and certified, c- / D- / L-criteria | ~7 s for the information at every target |
+
+Everything runs on a **512-pixel board** with a **3.52 mm aiming grid**. That is
+not a free parameter: an 8 mm bed is 9.1 pixels across at 512 and 4.5 at 256, and
+the coarse board misjudges bed-defined targets badly (notebook 02, and the
+appendix of notebook 09).
 
 Two structural facts do most of the work in the current solvers and are worth
 keeping in mind for anything new:
@@ -35,45 +45,67 @@ keeping in mind for anything new:
 Both facts survive into the two-player game, where the analogous ordering is by
 the *total* of the two scores.
 
+A third has since joined them, and it is what made the richer throw model
+affordable:
+
+3. **A bias does not change the board.** Aiming at `a` with bias `b` lands where
+   aiming at `a + b` would land unbiased, so the biased game is the unbiased game
+   with its action set translated — same values, same shots, relabelled. No MDP
+   is ever re-solved for a different bias. Anisotropy has no such shortcut: every
+   covariance needs its own solve, and a *tilt* adds another axis to that grid.
+
 ---
 
-## 1. Modelling fidelity — the cheapest way to change the answers
+## Done since this was written
 
-The solvers are exact given the model. Everything below changes the *model*,
-costs almost nothing extra to compute, and would change real recommendations.
-This is where the best return is.
+The original list put "fit a per-player covariance" first. That is now done, and
+so is most of what followed from it.
 
-### 1.1 A per-player covariance matrix, estimated from real throws — **do this first**
+* **§1.1 per-player covariance** — notebooks 12, 14, 16. A tall throw is worth
+  **0.28 visits per leg** over a round one of equal ellipse area, and modelling
+  it costs one MDP solve per covariance.
+* **§3.1 sets and legs** — notebook 06. The bull-up is worth 7.4 points in a best
+  of 3 and 1.0 in a best of 13 sets.
+* **§3.2 two-player, three darts** — notebook 04. Ignoring the opponent costs at
+  most ~1.4 points of win probability, and only below 120.
+* **§4.1 ability-tailored checkout charts** — notebook 05.
+* **§4.2 practice-value calculator** — notebook 08. A millimetre is worth
+  **0.43–0.58 visits per leg**, flat across ability; trebles are the better
+  practice for strong players and doubles for weak ones.
+* **§4.3 measurement protocol** — notebooks 09, 10, 17, and the design scripts.
+* **The measurement/advice loop** — notebook 11, and its extensions to bias
+  (13), the joint model (14), real-time inference (15) and a tilt (16).
 
-The repo already has the machinery: `darts/stats.py` supports a general `Sigma`,
-and there is an EM routine for fitting a throwing distribution
-(`ec83499 EM algorithm for throwing dist`). What is missing is joining it to the
-MDP: fit `Sigma` from a player's own darts, then solve *their* MDP.
+Three results from that work are worth carrying forward, because they change how
+the remaining items should be approached.
 
-This matters because the spherical assumption is wrong in a specific direction.
-Right-handed players throw with more variance along one axis and a slight tilt,
-and the earlier post already showed that a tilted `Sigma` can move the best
-single-dart aim from the treble 20 to the treble 15. The same asymmetry will
-change which double a player should leave themselves on — a player whose spread
-is vertical should prefer the doubles on the side of the board, where the bed is
-"wide" in the direction they miss.
+**Bias dominates.** Three millimetres of sideways pull costs 0.144 visits per
+leg; a millimetre and a half of spread costs 0.005. Anything that improves
+knowledge of where a player's darts actually centre is worth roughly thirty times
+the equivalent work on the shape of the group.
 
-* **Feasibility:** high. `ThreeDartMDP` already takes an arbitrary transition
-  matrix, and `transitions.transition_arrays(..., Sigma_mm=...)` already accepts
-  a full covariance. Data collection is the only real work: a phone camera and
-  the existing board-registration code, or a few hundred manually recorded darts.
-* **Applicability:** very high. This is the difference between "here is a
-  checkout chart" and "here is *your* checkout chart".
+**Match play is a better measuring instrument than a drill**, not merely a
+cheaper one. A single-target session cannot separate the spread from the aim
+point; the varied targets a leg visits naturally break that ridge (notebook 13).
+The exception is the *lean*, which is read from angular structure at the centre
+of the board, and match play essentially never goes there (notebook 17).
 
-### 1.2 Accuracy that depends on where you aim — **the biggest single modelling gap**
+**Do not measure a policy difference by counting argmax changes.** It overstates
+by about fivefold, in every model where it has been checked.
 
-The model assumes one `Sigma` everywhere on the board. Real players are far more
+---
+
+## 1. Modelling fidelity
+
+### 1.1 Accuracy that depends on where you aim — **the biggest remaining gap**
+
+The model assumes one `Σ` everywhere on the board. Real players are far more
 accurate at the treble 20 than at the treble 11, because that is what they have
 practised, and many are measurably worse throwing at a double under pressure.
 
-Both are one-line changes to the transition builder — `Sigma` becomes a function
-of the aiming point — and neither costs the solver anything, because the solver
-only ever sees the resulting `(n_points, n_scores)` matrix.
+Both are one-line changes to the transition builder — `Σ` becomes a function of
+the aiming point — and neither costs the solver anything, because the solver only
+ever sees the resulting `(n_points, n_scores)` matrix.
 
 The strategic consequences are large and testable:
 
@@ -82,17 +114,21 @@ The strategic consequences are large and testable:
 * A player with a strong 19 and a weak 20 may have a completely different scoring
   route, and the MDP will find it automatically.
 
+The measurement side is now much better equipped for this than it was: notebook
+09's design machinery would say where to throw to *estimate* a per-region `Σ`,
+and the same c-optimality argument applies per region.
+
 * **Feasibility:** high to build, medium to calibrate — you need enough data per
   region, which means practice-session logging rather than a single sitting.
 * **Applicability:** very high. Every player already believes this about
   themselves; the model would tell them what to do about it.
 
-### 1.3 Darts within a visit are not independent
+### 1.2 Darts within a visit are not independent
 
 The model treats the three darts of a visit as i.i.d. draws around whatever the
-player aims at. In reality, a player who sees dart 1 land 15mm high adjusts. That
-correlation is exactly what the 3-dart state space is built to represent, and
-adding it needs no new solver: extend the within-visit state with a coarse
+player aims at. In reality, a player who sees dart 1 land 15 mm high adjusts.
+That correlation is exactly what the 3-dart state space is built to represent,
+and adding it needs no new solver: extend the within-visit state with a coarse
 summary of the previous dart's error (say a 3×3 grid of "where the last dart
 went"), and let the transition matrix depend on it.
 
@@ -101,14 +137,24 @@ is affordable — the within-visit states are a small fraction of the work.
 
 * **Feasibility:** medium. The solver change is contained; the data to estimate
   "how much do players correct" is the hard part.
-* **Applicability:** high, and it is the most *scientifically* interesting of
-  these, because nobody has quantified the value of in-visit correction.
+* **Applicability:** high, and the most *scientifically* interesting of these,
+  because nobody has quantified the value of in-visit correction.
+
+### 1.3 A drifting player
+
+Everything assumes the player is constant while the posterior sharpens forever.
+A pull is exactly what appears when someone tires. `ParticleThrowPosterior`
+already takes a per-parameter drift and tracks a moving pull well (notebook 15) —
+but the drift magnitude is a hook, not a calibration. What a real player's pull
+does over an evening is unmeasured, and only a real session can supply it.
+
+* **Feasibility:** high to run, blocked on data. **Applicability:** high.
 
 ### 1.4 Bounce-outs, wired darts, and the dart already in the board
 
 Small effects, easy to add as a fixed probability of scoring zero (bounce-out) or
-as a reduced effective area for a bed that already holds two darts. The second
-one is a genuine reason not to aim at the same treble three times, and the model
+as a reduced effective area for a bed that already holds two darts. The second is
+a genuine reason not to aim at the same treble three times, and the model
 currently cannot express it.
 
 * **Feasibility:** high. **Applicability:** low-to-medium; worth a footnote
@@ -118,11 +164,32 @@ currently cannot express it.
 
 ## 2. Making the computation bigger
 
-### 2.1 Reducing the set of aiming points — **the enabler for everything else**
+### 2.1 The likelihood of a missed dart — **a three-hour bug in a fourteen-hour rebuild**
+
+The per-dart likelihood sums Gaussian density over every pixel carrying the
+observed score. A scoring bed is ~5,000 pixels at 512; a **miss** is the entire
+non-scoring board, ~145,000. So a scoring dart costs 27 ms and a missed one
+**3.4 seconds**, and 11.6% of simulated match darts are misses. This alone is
+roughly 2.8 hours of notebook 17's 3.4, and it is what makes live play cost half
+a second a dart instead of 22 ms.
+
+Almost all of those pixels are many standard deviations from the dart and
+contribute nothing, so the sum should be truncated. The obvious version does not
+work: the pixel set is shared across the whole particle cloud, which spans `σ`
+from 3.5 mm to 46 mm, so a single cutoff has to be sized for the widest particle
+and at eight standard deviations that is wider than the board. (This was tried
+and reverted — exact to 3e-15, and slower.) The fix is to give each band of
+particles its own pixel set, or to compute the zero-score probability as the
+complement of the scoring ones.
+
+* **Feasibility:** high, and self-contained. **Applicability:** indirect but it
+  pays for itself immediately in every experiment that simulates play.
+
+### 2.2 Reducing the set of aiming points
 
 Every Q-value in every one of these models is a linear functional of a point's
 score distribution, so only points on the convex hull of those distributions can
-ever be optimal. A quick experiment (7,573 points, 512-pixel board, σ = 15mm)
+ever be optimal. A quick experiment (7,573 points, 512-pixel board, σ = 15 mm)
 found ~1,950 points that are the argmax for some isotropic random direction, so
 the hull is not tiny — but isotropic directions are far broader than the value
 vectors that actually arise, which are monotone in score. Taking the union of the
@@ -132,9 +199,8 @@ much smaller set: `mdp_2player.candidate_points` cuts a 1,893-point grid to 195
 the answer by less than 1e-6 darts.
 
 Worth pushing further, because a 10× reduction in the action set is a 10×
-reduction in every solve. With the reduction in place a full 501×501 three-dart
-two-player leg takes about 15 minutes, so this is what makes the game
-interactive at all. Two routes:
+reduction in every solve — and the covariance grids of notebooks 12–17 multiply
+that saving. Two routes:
 
 * **Rigorous:** an LP per point testing whether its distribution lies inside the
   convex hull of the retained set. ~7,500 small LPs; certifies that discarding it
@@ -144,183 +210,97 @@ interactive at all. Two routes:
 
 * **Feasibility:** high. **Applicability:** indirect but large.
 
-### 2.2 The low-score region of the two-player game
+### 2.3 The low-score region of the two-player game
 
 In the two-player game, every state whose score is below 182 needs its own
 within-visit sweep, and there are `O(180 × game_start)` of them — this is what
-dominates the cost. There is a way out that mirrors the single-player trick:
-for a fixed opponent score, every within-visit value is a **piecewise-linear
-convex function of one scalar** (the value of the visit ending back where it
-started). Storing the upper envelope of those lines — usually a handful of
-segments — instead of recomputing the maximum over thousands of aiming points
-would collapse the low-score work by orders of magnitude.
+dominates the cost. There is a way out that mirrors the single-player trick: for
+a fixed opponent score, every within-visit value is a **piecewise-linear convex
+function of one scalar** (the value of the visit ending back where it started).
+Storing the upper envelope of those lines — usually a handful of segments —
+instead of recomputing the maximum over thousands of aiming points would collapse
+the low-score work by orders of magnitude.
 
 * **Feasibility:** medium; a self-contained piece of geometry (2-D convex hulls
   of (slope, intercept) pairs). **Applicability:** indirect.
 
-### 2.3 Continuous aiming points
+### 2.4 Continuous aiming points
 
-The aiming grid is currently a discretisation. Since the score-probability
-functions are smooth in the aim location, the optimum could be refined by local
-continuous optimisation from the grid argmax. This mostly matters when reporting
-*where* to aim to sub-millimetre precision, which is beyond what a player can
-act on — so it is a nicety, not a priority.
+The aiming grid is a discretisation, and notebook 17 found the cost of that
+directly: the value loss from a parameter error is a **staircase**, flat below
+half a grid step, because an error too small to move any recommendation costs
+exactly nothing. There is a precision beyond which measuring a player better buys
+nothing at all, and it is set by the aiming grid rather than by the data.
 
-* **Feasibility:** high. **Applicability:** low.
+Since the score-probability functions are smooth in the aim location, the optimum
+could be refined by local continuous optimisation from the grid argmax. Nobody
+has asked what the grid *should* be, which is the more interesting half of this.
+
+* **Feasibility:** high. **Applicability:** low for players, medium for the
+  measurement work.
 
 ---
 
 ## 3. Two-player and match play
 
-### 3.1 Sets and legs — **the best effort-to-payoff ratio in this whole list**
-
-Once `W[u, v]` is known, the leg is a black box: two players of given abilities,
-one throwing first, produce a single number `p = W[501, 501]`. A match is then a
-tiny MDP over `(legs won by A, legs won by B, sets, who throws first)` — a few
-thousand states, milliseconds to solve.
-
-That immediately answers questions people actually argue about:
-
-* How much is winning the bull-up worth in a best-of-11? (It is worth much more
-  in short formats, and the model quantifies it exactly.)
-* How much better does player B have to be to overcome throwing second?
-* Is the "sets" format more or less favourable to the underdog than "legs"?
-
-Nothing new has to be invented; it is an afternoon's work on top of the leg
-solver.
-
-* **Feasibility:** very high. **Applicability:** high, and highly publishable as
-  a post.
-
-### 3.2 Where two-player strategy actually differs from single-player
-
-The interesting output of the leg game is not the win probability, it is the
-*difference* between the win-maximising policy and the darts-minimising one. The
-places to look:
-
-* **Opponent on a finish.** When the opponent will probably check out next visit,
-  your last dart should go at a double even from a poor position, because
-  "leaving a good number" is worth nothing if you never throw again. The
-  single-player model can never produce this.
-* **Big lead.** When far ahead, the win-maximising policy should get *more*
-  conservative around busts than the darts-minimising one.
-* **How large are these effects?** Now measured, for the one-dart game: ignoring
-  the opponent entirely costs **at most 0.5 percentage points of win probability
-  anywhere on the board**, and the worst cases are all at low scores (0.0049
-  below 60, against 0.0014 above 120). That justifies using the much cheaper
-  single-player policy for the whole scoring phase and solving the two-player
-  game only near the finish — which is also the region where it is cheapest.
-  Worth repeating for the three-dart game, where the endgame effects should be
-  larger, because a visit gives three chances to react to the opponent.
-
-  Beware the obvious-looking measure here: counting states where the two
-  *argmaxes* differ reports ~17% at high scores as well as low, purely because
-  many aiming points are near-ties there and the argmax flips between
-  neighbouring pixels for reasons worth a millionth of a win. Measure the value
-  given up, not the label.
-
-Note also that the *single-player* objective matters here: minimising darts
-thrown treats a bust on the first dart as costing one dart, since the other two
-are never thrown, while minimising visits charges it a whole visit. The second is
-the right proxy for a race. Both are supported (`dart_cost` / `turn_cost`), and
-they disagree on several dozen first-dart aims.
-
-* **Feasibility:** high for the 1-dart game, medium for 3-dart at full
-  resolution (see §2.1, §2.2). **Applicability:** medium — the answers are
-  interesting but affect only the endgame.
-
-### 3.3 Asymmetric abilities
+### 3.1 Asymmetric abilities
 
 `W[u, v]` for two *different* players is the same computation with two transition
-matrices. It answers "how should I play differently against a better player?"
-— the classic intuition is that an underdog should take more risk, and this model
-can say exactly where and how much.
+matrices (`darts/mdp_2player_asym.py`). It answers "how should I play differently
+against a better player?" — the classic intuition is that an underdog should take
+more risk, and this model can say exactly where and how much.
 
 * **Feasibility:** high (it is a parameter change). **Applicability:** high.
+
+### 3.2 The opponent, under the richer throw model
+
+Notebook 04 measured the value of knowing the opponent's score under an isotropic
+throw. Both the two-player game and the anisotropic model are solved; nobody has
+combined them. The endgame effects should be larger for a player whose group is
+stretched, since which double they want depends on the shape.
+
+* **Feasibility:** high, but the solve grids multiply. **Applicability:** medium.
 
 ---
 
 ## 4. Outputs a real player could use
 
-### 4.1 An ability-tailored checkout chart
+### 4.1 Calibration against real match data — **now the most valuable thing on the list**
 
-Every checkout chart in every pub is the same chart, computed for a notional
-perfect player. The 3-dart model produces the correct chart for *any* ability,
-and the analysis notebook shows they genuinely differ: strong players should go
-at the double on every dart of a visit, while weak players should use the last
-dart to protect the number instead of chasing the double.
-
-Deliverable: a table, per ability band, of what to aim at for every score from
-2 to 170 and for each dart of the visit. This is a genuinely new artefact.
-
-* **Feasibility:** done, essentially — it falls out of the solved policy.
-* **Applicability:** the highest of anything here.
-
-### 4.2 A practice-value calculator
-
-Differentiate the answer with respect to the model inputs:
-
-* What is 1mm of `σ` worth, in darts per leg? (From the notebook: around 1.5
-  darts per leg per mm for a club player — a startlingly large number, and a good
-  way to communicate why accuracy matters more than knowing checkouts.)
-* What would getting better *only at doubles* be worth, versus only at trebles?
-  This is the practice-allocation question every player faces, and it is a
-  straightforward comparison of two perturbed models.
-
-* **Feasibility:** high. **Applicability:** very high.
-
-### 4.3 A measurement protocol — **done, and it changed the answer to §1.1**
-
-Fitting `Sigma` from a player's darts (§1.1) silently assumes you know where they
-were aiming and that one target is as good as another. Neither holds.
-`darts/design.py` computes the Fisher information for `(b, Sigma)` at every
-target on the board — one FFT per score gives the whole map — and searches for
-the targets that measure a player most precisely, with a general equivalence
-theorem certificate proving the optimum rather than merely searching for it.
-
-Three results that change how §1.1 should be done in practice:
-
-* **The target matters enormously.** T20, where a player would naturally throw,
-  costs a factor of 4.6 to 191 in variance depending on ability. Tight players
-  (`σ ≤ 11`mm) are measured best at the *bull*, whose two rings sit at exactly
-  the right scale; looser players out at ~134mm and then, past ~22mm, back in at
-  the treble ring. `results/manifest_best_target.csv` is the lookup table.
-* **Splitting the session across targets** is nearly worthless asymptotically
-  (0–17%) but valuable at real session lengths, because from a single target an
-  unluckily tight group is indistinguishable from a displaced aim point. That is
-  a global feature of the likelihood, invisible to Fisher information.
-* **A two-stage session** — a first batch on the robust design, the rest at the
-  target the rough estimate points to — gets most of the way to the unattainable
-  oracle.
-
-What remains is to run it on a real player rather than a simulated one.
-
-**Two follow-ons are now also done.** `design.darts_to_detect` prices the
-question "did the practice work?": an elite player can prove a millimetre of
-improvement in 235 darts per session, a pub player needs 4,851, and at T20 the
-question stops being answerable at all (notebook 10). And `darts/bayes.py`
-closes the measurement/advice loop entirely: a band-name prior over sigma,
-updated by every dart of ordinary match play, driving posterior-weighted
-Q-value recommendations. A two-band self-assessment error self-corrects within
-a handful of legs; the same error frozen into a fixed chart costs ~0.35 visits
-per leg indefinitely (notebook 11). The natural extensions are a (bias, sigma)
-posterior — where the confounding result starts to matter — and a forgetting
-factor so the posterior tracks a drifting player instead of sharpening
-forever.
-
-### 4.4 Calibration against real match data
-
-The model currently maps `σ` to a 3-dart average. That mapping should be checked
-the other way round: take published professional statistics (3-dart averages,
-checkout percentages by score, first-nine averages) and ask which `σ` reproduces
-them, and whether *one* `σ` can reproduce all of them at once. If it cannot —
-for instance if pros' real checkout percentages are worse than the model predicts
-at their scoring `σ` — that is direct evidence for the aim-dependent accuracy of
-§1.2, and a genuinely interesting result.
+The model maps `σ` to a 3-dart average. That mapping should be checked the other
+way round: take published professional statistics (3-dart averages, checkout
+percentages by score, first-nine averages) and ask which `σ` reproduces them, and
+whether *one* `σ` can reproduce all of them at once. If it cannot — for instance
+if pros' real checkout percentages are worse than the model predicts at their
+scoring `σ` — that is direct evidence for the aim-dependent accuracy of §1.1, and
+a genuinely interesting result.
 
 * **Feasibility:** medium; the data is public but needs scraping and cleaning.
 * **Applicability:** high, and it is the thing that would make the whole project
   credible to a darts audience rather than a statistics one.
+
+### 4.2 A real player, measured
+
+Everything in this repository is simulated. The measurement protocol is designed,
+certified, priced and tested against synthetic players; it has never been pointed
+at a human. The protocol is short — a couple of hundred darts at the bull —
+and the machinery to fit, advise and track in real time already exists.
+
+The interesting question is not whether it works but where the Gaussian model
+*fails*: a real thrower may be skewed, heavy-tailed, or genuinely different at
+different targets, and only a real session will say.
+
+* **Feasibility:** high; it needs a player and an evening. **Applicability:** the
+  highest of anything here, because every other result is conditional on it.
+
+### 4.3 The prior on a lean is a guess
+
+Notebook 16 found the lean easier to measure than the spread, and worth 0.61
+visits per leg across orientations. But its prior is centred on no lean with a
+standard deviation of 0.3, chosen by hand, and at a few hundred darts that prior
+is doing real work. What real players' leans actually look like is unmeasured.
+
+* **Feasibility:** falls out of §4.2. **Applicability:** medium.
 
 ---
 
@@ -329,10 +309,15 @@ at their scoring `σ` — that is direct evidence for the aim-dependent accuracy
 The Quadro board work already in the repo extends naturally: with a full-game
 solver rather than a single-dart one, you can ask whether the Quadro board makes
 *legs* shorter, whether it widens or narrows the gap between strong and weak
-players, and whether it makes the endgame more or less interesting. The same
-machinery answers "what would a better dartboard numbering look like?" — the
-standard arrangement is designed to punish inaccuracy, and one can ask which
-arrangement maximises or minimises the skill gap.
+players, and whether it makes the endgame more or less interesting.
+
+Notebook 16 sharpened the interesting version of this question. The board's
+*geometry* is very nearly rotationally symmetric; its **numbering** is not, and
+that asymmetry is worth 0.61 visits per leg to a leaning player — the 20 is
+flanked by the 1 and the 5 precisely so that sideways error is punished. So "what
+would a better dartboard numbering look like?" now has a measurable objective:
+which arrangement maximises or minimises the skill gap, and which is most
+forgiving of the way real throws are actually shaped.
 
 * **Feasibility:** high (a board is just a different pixel array).
 * **Applicability:** low for players, high for a good post.
@@ -341,12 +326,14 @@ arrangement maximises or minimises the skill gap.
 
 ## Suggested order
 
-1. **Ability-tailored checkout charts** (§4.1) — already computable, best payoff.
-2. **Sets and legs on top of the leg solver** (§3.1) — an afternoon, lots of
-   quotable results.
-3. **Fit `Sigma` from real throws and solve a personal MDP** (§1.1).
-4. **Practice-value calculator** (§4.2) — falls out of 3.
-5. **Aim-dependent accuracy** (§1.2) — the biggest modelling gap.
-6. **Action-set reduction** (§2.1), then the full two-player 3-dart game.
-7. **Calibration against professional statistics** (§4.3).
-8. In-visit correlation (§1.3), board design (§5), everything else.
+1. **Measure a real player** (§4.2) — everything else is conditional on it, and
+   it is an evening's work plus a willing thrower.
+2. **Fix the missed-dart likelihood** (§2.1) — three hours of every rebuild, and
+   the difference between 22 ms and half a second a dart in live play.
+3. **Calibration against professional statistics** (§4.1) — the credibility item,
+   and it doubles as evidence for or against §1.1.
+4. **Aim-dependent accuracy** (§1.1) — the biggest remaining modelling gap.
+5. **Action-set reduction** (§2.2), which makes the covariance grids of §3.2 and
+   everything downstream affordable.
+6. **Asymmetric abilities** (§3.1) — cheap, and answers a question players ask.
+7. In-visit correlation (§1.2), board numbering (§5), everything else.
