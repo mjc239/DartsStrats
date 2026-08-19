@@ -403,6 +403,99 @@ def greedy_design(I_pts, c, k, seed_points=(), refine=True, max_swaps=50):
     return chosen, float(value)
 
 
+def l_criterion(M, W, ridge=1e-12):
+    """
+    ``tr(W M^-1)``: the general linear-criterion family.
+
+    Everything else in this module is a special case. ``W = c c^T`` gives
+    c-optimality (the variance of one scalar, as in notebook 09); ``W = I``
+    gives A-optimality (the total variance of all the parameters); and setting
+    ``W`` to the Hessian of the *decision* loss gives a design that minimises
+    expected visits lost rather than expected estimation error -- which is a
+    different thing and generally a different design.
+
+    Accepts a single matrix or a stack of them.
+    """
+    M = np.asarray(M, float)
+    single = M.ndim == 2
+    Ms = M[None] if single else M
+    eye = np.eye(Ms.shape[-1])
+    reg = Ms + ridge * np.trace(Ms, axis1=-2, axis2=-1)[..., None, None] * eye
+    out = np.einsum("ij,pji->p", np.asarray(W, float), np.linalg.inv(reg))
+    return float(out[0]) if single else out
+
+
+def _criterion_pieces(M, kind, c=None, W=None, ridge=1e-12):
+    """
+    ``(phi, d_weights)`` for the multiplicative algorithm and the equivalence
+    certificate, for whichever criterion is in use.
+
+    The general equivalence theorem takes the same shape for all of them: a
+    design is optimal exactly when the directional derivative ``d(t)`` toward
+    every candidate is no greater than the criterion's own scale.
+    """
+    p = M.shape[-1]
+    eye = np.eye(p)
+    reg = M + ridge * np.trace(M) * eye
+    Minv = np.linalg.inv(reg)
+    if kind == "D":
+        # phi = -log det M; d(t) = tr(M^-1 I(t)), optimal when max d <= p
+        sign, logdet = np.linalg.slogdet(reg)
+        return -logdet, Minv, float(p)
+    if kind == "c":
+        W = np.outer(c, c)
+    elif kind != "L":
+        raise ValueError("kind must be 'c', 'D' or 'L'")
+    A = Minv @ np.asarray(W, float) @ Minv
+    return float(np.trace(np.asarray(W, float) @ Minv)), A, None
+
+
+def optimal_design_general(I_pts, kind="D", c=None, W=None, max_iter=4000,
+                           lam=0.6, tol=1e-12, prune=1e-9):
+    """
+    The continuous optimal design for any of the criteria, by the multiplicative
+    algorithm, with the equivalence-theorem certificate.
+
+    Args:
+        I_pts (np.ndarray): (n_candidates, p, p) per-throw information.
+        kind (str): ``"D"`` for D-optimality (all parameters, best overall fit),
+            ``"c"`` for one scalar (pass ``c``), ``"L"`` for a weighted
+            criterion (pass ``W``).
+        c (np.ndarray): criterion vector, for ``kind="c"``.
+        W (np.ndarray): weight matrix, for ``kind="L"``.
+
+    Returns:
+        dict: ``weights``, ``support``, ``value``, ``certificate`` (1 at the
+        optimum), ``n_iter``.
+    """
+    n = len(I_pts)
+    w = np.full(n, 1.0 / n)
+    value, d, scale = np.inf, None, None
+    for it in range(max_iter):
+        M = np.tensordot(w, I_pts, axes=(0, 0))
+        phi, A, fixed_scale = _criterion_pieces(M, kind, c, W)
+        d = np.einsum("ij,pji->p", A, I_pts)
+        scale = fixed_scale if fixed_scale is not None else phi
+        if abs(value - phi) < tol * max(abs(phi), 1e-30) and it > 20:
+            value = phi
+            break
+        value = phi
+        w = w * np.power(np.maximum(d / scale, 1e-300), lam)
+        w /= w.sum()
+
+    return {"weights": w, "support": np.flatnonzero(w > prune),
+            "value": float(value), "certificate": float(d.max() / scale),
+            "n_iter": it + 1}
+
+
+def certificate_general(I_pts, M, kind="D", c=None, W=None):
+    """Equivalence-theorem certificate for any design and criterion: >= 1
+    always, and 1 only at the optimum."""
+    phi, A, fixed_scale = _criterion_pieces(np.asarray(M, float), kind, c, W)
+    d = np.einsum("ij,pji->p", A, I_pts)
+    return float(d.max() / (fixed_scale if fixed_scale is not None else phi))
+
+
 def optimal_design(I_pts, c, max_iter=4000, lam=0.6, tol=1e-12, prune=1e-9):
     """
     The continuous c-optimal design over the candidate set, by the standard

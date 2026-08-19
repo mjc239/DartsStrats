@@ -68,6 +68,46 @@ def bias_grid(x_values, y_values):
     return np.stack([xs.ravel(), ys.ravel()], axis=1)
 
 
+def rotated_sigma(major_mm, minor_mm, angle_deg):
+    """
+    A covariance from its ellipse: axis lengths and an orientation.
+
+    More interpretable than a correlation for describing a *tilted* throw --
+    "a 20 by 12 group leaning 30 degrees" rather than "rho = 0.42" -- and it
+    separates the two things a tilt confounds, since rotating an ellipse
+    changes ``rho`` and the marginal spreads together.
+
+    Args:
+        major_mm, minor_mm (float): the ellipse's axis standard deviations.
+        angle_deg (float): angle of the *major* axis, anticlockwise from the
+            board's x axis (so 90 is a group stretched vertically).
+    """
+    t = np.deg2rad(float(angle_deg))
+    R = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
+    return R @ np.diag([float(major_mm) ** 2, float(minor_mm) ** 2]) @ R.T
+
+
+def principal_axes(Sigma):
+    """
+    The inverse of :func:`rotated_sigma`: ``(major, minor, angle_deg)``.
+
+    The angle is taken modulo 180 degrees, since an ellipse leaning 30 degrees
+    and one leaning 210 are the same ellipse.
+    """
+    Sigma = np.asarray(Sigma, float)
+    w, V = np.linalg.eigh(Sigma)
+    order = np.argsort(w)[::-1]
+    w, V = w[order], V[:, order]
+    angle = np.degrees(np.arctan2(V[1, 0], V[0, 0])) % 180.0
+    return float(np.sqrt(w[0])), float(np.sqrt(w[1])), float(angle)
+
+
+def correlation(Sigma):
+    """``rho``, the off-diagonal of the correlation matrix."""
+    Sigma = np.asarray(Sigma, float)
+    return float(Sigma[0, 1] / np.sqrt(Sigma[0, 0] * Sigma[1, 1]))
+
+
 def isotropic_equivalent(Sigma):
     """``sqrt(tr(Sigma) / 2)``, the single sigma this project quotes."""
     Sigma = np.asarray(Sigma, float)

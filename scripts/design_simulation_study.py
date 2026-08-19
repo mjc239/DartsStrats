@@ -40,7 +40,7 @@ from darts.design import (c_criterion, design_information, information_maps,
 from darts.fitting import fit_multi_target, simulate_session
 from darts.utils import mm_per_pixel
 
-PIXELS = 256
+PIXELS = 512
 TRUE_BIAS = np.array([2.0, -3.0])      # a player who pulls right and low
 
 _BOARD = None
