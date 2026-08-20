@@ -23,7 +23,7 @@ also lists what everything costs to re-run.
 | Fitting a player from scores (`darts/fitting.py`) | exact EM, SQUAREM accelerated | ~1.4 s for a 200-dart session |
 | Anisotropic throw with bias (`darts/throw_shape.py`) | solved; grid *and* particle posterior | one MDP solve per covariance; bias is free |
 | Measurement design (`darts/design.py`) | optimum found and certified, c- / D- / L-criteria | ~7 s for the information at every target |
-| Calibration against scores (`darts/calibration.py`) | machinery built and validated; **no real data yet** | exact visit likelihood, milliseconds |
+| Calibration against scores (`darts/calibration.py`) | machinery built and validated; **run against 300,985 real darts** (notebook 19) | exact visit likelihood, milliseconds |
 
 Everything runs on a **512-pixel board** with a **3.52 mm aiming grid**. That is
 not a free parameter: an 8 mm bed is 9.1 pixels across at 512 and 4.5 at 256, and
@@ -94,6 +94,17 @@ of the board, and match play essentially never goes there (notebook 17).
 **Do not measure a policy difference by counting argmax changes.** It overstates
 by about fivefold, in every model where it has been checked.
 
+A fourth has since been added by the arrival of real data, and it outranks the
+other three.
+
+**The three darts of a visit are not independent, and the assumption is load
+bearing.** Notebook 19: +18 to +22 points of lift on the next dart's treble-20
+chance, z above 35, surviving every check for a duller explanation. Read that
+notebook's verdict before quoting any number that depends on the *spread* of a
+visit total — checkout probabilities, bust risk, the value of the throw — and
+treat every confidence interval in the fitting notebooks as too narrow. Per-dart
+results are unaffected.
+
 ---
 
 ## 1. Modelling fidelity
@@ -124,22 +135,41 @@ and the same c-optimality argument applies per region.
 * **Applicability:** very high. Every player already believes this about
   themselves; the model would tell them what to do about it.
 
-### 1.2 Darts within a visit are not independent
+### 1.2 Darts within a visit are not independent — **measured, and now the top of this list**
 
-The model treats the three darts of a visit as i.i.d. draws around whatever the
-player aims at. In reality, a player who sees dart 1 land 15 mm high adjusts.
-That correlation is exactly what the 3-dart state space is built to represent,
-and adding it needs no new solver: extend the within-visit state with a coarse
-summary of the previous dart's error (say a 3×3 grid of "where the last dart
-went"), and let the transition matrix depend on it.
+This was speculation when it was written. Notebook 19 measured it on 300,985
+professional darts and it is not a small effect: hitting the treble 20 raises the
+next dart's chance of hitting it from 22.3% to 40.3%, **+18 to +22 points, z above
+35**. It is not player pooling (34 of 35 individuals show it), not form drift (the
+lift is *negative*, −6.8, across the gap between visits), and not the selection
+filter (removing it makes the effect *larger*). Real visits are over-dispersed:
+2.31× too many three-treble visits and a 31% shortfall of one-treble visits
+against any i.i.d. model at the same marginal rate.
 
-Cost: multiplies the within-visit state count by the number of error bins, which
-is affordable — the within-visit states are a small fraction of the work.
+Every transition matrix in this project assumes the opposite. Notebook 19's
+verdict section works through which published results survive: per-dart
+quantities do, anything reading the spread of a visit total does not, and every
+confidence interval in the fitting notebooks is too narrow.
 
-* **Feasibility:** medium. The solver change is contained; the data to estimate
-  "how much do players correct" is the hard part.
-* **Applicability:** high, and the most *scientifically* interesting of these,
-  because nobody has quantified the value of in-visit correction.
+**The cheapest fix is not the one described above.** A per-dart error-bin state
+multiplies the within-visit state count and needs data on "how much do players
+correct". A **per-visit random aim offset** — the aim point drawn once when the
+player steps to the oche, darts conditionally i.i.d. around it — costs one
+parameter and reproduces every measured fact at once: positive within-visit
+correlation, zero across the gap, over-dispersed totals, and notebook 18's
+three-fold convolution still holding conditionally, so the calibration machinery
+survives as a mixture over the offset. Both σ's are identifiable from the data
+already built: the within-visit lift pins their ratio, the marginal treble rate
+pins the total.
+
+The solver cost is real but bounded: the transition matrix becomes a mixture over
+offsets, so it is one extra integration per aiming point and no new state.
+
+* **Feasibility:** high. The data exists (`data/real/`), the estimator is two
+  moments, and the solver change is a convolution.
+* **Applicability:** very high, and it is now the *correctness* item rather than a
+  refinement — several published numbers depend on a visit-total spread that is
+  known to be wrong.
 
 ### 1.3 A drifting player
 
@@ -266,19 +296,29 @@ stretched, since which double they want depends on the shape.
 
 ## 4. Outputs a real player could use
 
-### 4.1 Calibration against real match data — **now the most valuable thing on the list**
+### 4.1 Calibration against real match data — **started; one player done, the answer is "no"**
 
 The model maps `σ` to a 3-dart average. That mapping should be checked the other
-way round: take published professional statistics (3-dart averages, checkout
-percentages by score, first-nine averages) and ask which `σ` reproduces them, and
-whether *one* `σ` can reproduce all of them at once. If it cannot — for instance
-if pros' real checkout percentages are worse than the model predicts at their
-scoring `σ` — that is direct evidence for the aim-dependent accuracy of §1.1, and
-a genuinely interesting result.
+way round: take published professional statistics and ask whether *one* `σ` can
+reproduce all of them at once.
 
-* **Feasibility:** medium; the data is public but needs scraping and cleaning.
-* **Applicability:** high, and it is the thing that would make the whole project
-  credible to a darts audience rather than a statistics one.
+Notebook 19 ran this for one player with 1,367 clean scoring visits. **One `σ`
+cannot.** Matched on his three-dart average (σ ≈ 7.2 mm) the model reproduces his
+180 rate (7.5% against 8.05 ± 0.74 observed) and his rate of poor visits
+(19.4% against 19.97 ± 1.08), then predicts an exact 60 nearly twice as often as
+it happens (17.3% against 10.53 ± 0.83). No `σ` repairs it in either direction.
+
+The diagnosis is §1.2, not §1.1: the failure is over-dispersion of the visit
+total, which a per-visit random aim offset explains and an aim-dependent `Σ` does
+not. What remains here is to run it across many players rather than one, and to
+add the checkout half — the per-double rates are §4.3 and are already done, but
+checkout percentage *by score* is untouched and is the branch that would speak to
+§1.1.
+
+* **Feasibility:** high now — `data/real/` holds the cleaned data and
+  `darts/calibration.py` the estimator.
+* **Applicability:** high, and it is the thing that makes the project credible to
+  a darts audience rather than a statistics one.
 
 ### 4.2 A real player, measured — **now blocked only on data**
 
@@ -305,7 +345,7 @@ different targets, and only a real session will say.
 * **Feasibility:** high; it needs a player and an evening. **Applicability:** the
   highest of anything here, because every other result is conditional on it.
 
-### 4.3 Per-double checkout rates — **the sharpest test, and the cheapest data**
+### 4.3 Per-double checkout rates — **done, with a twist worth following**
 
 An isotropic throw aimed at the centre of a double bed hits it with a probability that
 depends only on the bed's size, and every double bed is the same size. So the model
@@ -314,18 +354,27 @@ throw with a 1.5:1 axis ratio instead says they vary by 14 points — 31% at the
 double 20 against 45% at the double 6 — because a bed is 8mm deep and 52mm long
 and which dimension your error runs into depends on where the bed sits.
 
-Distinguishing those needs about **200 attempts at each of two doubles 90 degrees
-apart**, which is less data than any other question in this project and is already
-published for professionals. It tests the assumption that has gone unexamined the
-longest: that a real throw is round.
+Notebook 19 ran it on 15,874 attempts by 16 professionals. **The flat prediction
+survives**: chi² = 20.8 on 19 df, p = 0.35, in a test with 80% power against a
+5-point peak-to-trough spread.
 
-The confound to design around is practice frequency — a player better at the
-double 20 than the double 3 may have a tall group or may simply have thrown at the 20
-ten thousand more times, which is §1.1 wearing a disguise. Compare doubles matched on
-attempt volume and differing in angle.
+The twist is underneath. The sixteen players do not agree with each other —
+Q = 28.3 on 15 df, p = 0.020, I² = 47%, running from Whitlock at +9.0 points on
+the side-versus-top contrast to Anderson at −13.0 — and the isotropic model says
+every one of those numbers is exactly zero. The pooled null is an average over
+players who individually deviate in both directions, which is what notebook 12
+predicts if their groups have different aspect ratios. So the contrast is an
+**estimator of a player's group shape, readable from a scoresheet**, and the
+follow-up is to fit it per player and check it against their scoring `Σ`.
 
-* **Feasibility:** high, given the data. **Applicability:** high — a negative
-  result would retire the isotropic model outright.
+The confound flagged when this was written is still open: a player better at the
+double 20 than the double 3 may have a tall group or may simply have thrown at
+the 20 ten thousand more times, which is §1.1 wearing a disguise. The attempt
+counts by double are in `data/real/double_attempts.csv`; matching on volume is
+the next step and notebook 19 does not do it.
+
+* **Feasibility:** done. **Applicability:** high — and the per-player version is
+  the cheapest shape measurement in the project.
 
 ### 4.4 The prior on a lean is a guess
 
@@ -360,18 +409,22 @@ forgiving of the way real throws are actually shaped.
 
 ## Suggested order
 
-1. **Measure a real player** (§4.2) — everything else is conditional on it, and it is
-   an evening's work plus a willing thrower. The competition-data route of notebook 18
-   needs no thrower at all, only published statistics.
-2. **Test whether the throw is round** (§4.3) — ~200 attempts at each of two doubles,
-   and the model either survives or does not. The cheapest data here is the sharpest
-   test.
-3. **Fix the missed-dart likelihood** (§2.1) — three hours of every rebuild, and the
+1. **The per-visit aim offset** (§1.2) — the data says the model is wrong here, says
+   by how much, and says which single parameter fixes it. Nothing else on this list
+   corrects a result that is already published.
+2. **Measure a real player** (§4.2) — everything else is conditional on it, and it is
+   an evening's work plus a willing thrower. It is also the only route to the
+   question notebook 19 cannot answer: whether the Gaussian is the right shape for
+   *one* dart, as opposed to the right number of them.
+3. **Calibration across many players** (§4.1) — notebook 19 fitted one. The estimator
+   and the cleaned data are both in the repo, so this is now cheap, and checkout
+   percentage by score is the branch that would speak to §1.1.
+4. **Fix the missed-dart likelihood** (§2.1) — three hours of every rebuild, and the
    difference between 22 ms and half a second a dart in live play.
-4. **Calibration against professional statistics** (§4.1) — the credibility item, and
-   it doubles as evidence for or against §1.1.
-5. **Aim-dependent accuracy** (§1.1) — the biggest remaining modelling gap.
-6. **Action-set reduction** (§2.2), which makes the covariance grids of §3.2 and
+5. **Per-player group shape from the doubles** (§4.3, the open half) — matched on
+   attempt volume, to separate shape from practice frequency.
+6. **Aim-dependent accuracy** (§1.1) — the biggest remaining modelling gap.
+7. **Action-set reduction** (§2.2), which makes the covariance grids of §3.2 and
    everything downstream affordable.
-7. **Asymmetric abilities** (§3.1) — cheap, and answers a question players ask.
-8. In-visit correlation (§1.2), board numbering (§5), everything else.
+8. **Asymmetric abilities** (§3.1) — cheap, and answers a question players ask.
+9. Board numbering (§5), everything else.

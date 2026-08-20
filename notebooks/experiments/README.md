@@ -1,12 +1,14 @@
 # The experiments
 
-Eighteen notebooks, in six phases. Each phase exists because the previous one
+Nineteen notebooks, in six phases. Each phase exists because the previous one
 exposed a gap, so they read best in order — but every notebook states its own
 question and answers it, and the verdict sections are self-contained.
 
-Everything below is **simulated**. No real player has been measured yet, which is
-the largest single caveat on the whole project -- notebook 18 is the preparation
-for removing it.
+Notebooks 01–17 are **simulated**: no real player is measured in them. Notebook
+18 builds the machinery for meeting real data and **notebook 19 uses it**, on
+300,985 darts of professional competition. Read 19 before trusting anything in
+phases 2 and 5 too literally — it refutes the independence assumption that every
+transition matrix in the project is built on, and says which results survive.
 
 All notebooks run on a **512-pixel board** with a **3.52 mm aiming grid**
 (`point_stride=4`). Notebook 02 is where that choice is justified: an 8 mm
@@ -71,6 +73,7 @@ then the model starts growing.
 | | asks | finds |
 |---|---|---|
 | **18** Calibrating against real scores | A scoresheet has no aim point. Can the model be fitted to one anyway -- and can it be *refuted*? | **Yes to both.** Above a remaining score of 250 the aim is known to be the treble 20, so a visit total is an exact three-fold convolution and ~2,000 scoring darts measure an elite player to ±0.2mm. More useful: one σ must explain the average, the 180 rate *and* the checkout rate at once. **An isotropic throw says all twenty doubles are equally hard to within 0.22 points; a 1.5:1 tall throw says they vary by 14** -- so ~200 attempts at each of two doubles tests the model's oldest untested assumption |
+| **19** What real darts says | 300,985 professional darts. Three predictions, tested | **Doubles: flat survives** (p = 0.35, with 80% power against a 5-point spread) — but the sixteen players disagree with each other in both directions (I² = 47%), which is a shape signal, not noise. **Visit totals: right at the extremes, wrong in the middle** — no `σ` reproduces the 180 rate and P(exactly 60) at once. **Independence: refuted.** Hitting T20 lifts the next dart's chance by **18–22 points** (z > 35). Not player pooling (34 of 35 individuals), not form drift (the lift is *negative* across the gap between visits), not the filter. The fix is one parameter: draw the aim point once per visit |
 
 ---
 
@@ -82,6 +85,7 @@ machine, so those are upper bounds.
 | | notebook | time |
 |---|---|---|
 | 06 | Legs, sets, and the bull-up | 4 s |
+| 19 | What real darts says | 6 s |
 | 04 | The two-player leg | 10 s |
 | 01 | Is the value function right? | 1 m 13 |
 | 02 | Millimetres, pixels, and the board | 1 m 16 |
@@ -101,6 +105,11 @@ machine, so those are upper bounds.
 | 17 | Measuring all of it | **3 h 25** ◦ |
 
 **Total ≈ 6 h 22.**
+
+Notebook 19 is six seconds because all the work is upstream: it reads the files
+`scripts/build_real_data.py` produces. That build is not in the total — it
+downloads from pinned upstream commits and is bounded by the network, not by
+this machine. See `data/real/README.md`.
 
 ### Why the slow ones are slow
 

@@ -15,7 +15,13 @@ python scripts/build_real_data.py        # ~1 min
 The CSVs are **gitignored on purpose** — ~35 MB, and none of the four upstream repos
 carries a licence, so we regenerate rather than redistribute. Upstreams are pinned to
 commit SHAs and output is byte-for-byte deterministic, checked against `CHECKSUMS.txt`
-on every run. `--verify-only` re-checks without rebuilding.
+on every run. `--verify-only` re-checks without rebuilding. Build time is ~1 min.
+
+## What reads it
+
+`notebooks/experiments/19-what-real-darts-says.ipynb` (six seconds, once the data
+exists) and `tests/test_real_data.py`, which restates that notebook's findings as
+assertions and **skips** cleanly on a clone that has not run the build.
 
 ## What is here
 
