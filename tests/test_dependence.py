@@ -154,6 +154,24 @@ def test_the_aim_steps_down_the_board_and_never_back_up(grid):
     assert steps.max() <= 1, "and never skips a target"
 
 
+def test_a_sideways_pull_is_actually_fitted(grid):
+    """Regression: the bias must move off its starting value of zero.
+
+    Nelder-Mead's default simplex scales each coordinate by 5% of its starting
+    value and falls back to 0.00025 when that value is zero. The sideways bias
+    starts at zero, so with the default it was explored over a range of a quarter
+    of a micron and came back unchanged -- reported as a fit, and never fitted.
+    VisitModel.steps gives every coordinate an explicit scale instead.
+    """
+    model = VisitModel(grid, contamination=True, switching=True)
+    truth = np.array([np.log(7.0), -3.0, -2.0, np.log(5.0), -3.5, -1.0])
+    beds, hit = model.simulate(truth, 4000, rng=np.random.default_rng(11))
+    got = model.unpack(model.fit(beds, hit).x)
+    assert abs(got["bias"][0] - (-3.0)) < 0.8, "the pull should be recovered"
+    assert abs(got["sigma"] - 7.0) < 0.8
+    assert (model.steps > 0.01).all(), "every coordinate needs a usable scale"
+
+
 def test_a_stored_fit_can_be_turned_back_into_a_model(grid):
     """pack() inverts unpack(), so results/dependence needs no refitting to use."""
     for kw in [dict(switching=True),

@@ -446,13 +446,34 @@ class VisitModel:
             total = total + w * np.exp(logsumexp(alpha, axis=1))
         return float(np.sum(np.log(np.maximum(total, 1e-300))))
 
-    def fit(self, beds, hit, theta0=None, maxiter=2000):
+    @property
+    def steps(self):
+        """
+        How far to move each parameter when building the initial simplex.
+
+        Nelder-Mead's default simplex scales each coordinate by 5% of its
+        starting value, and falls back to 0.00025 for a coordinate that starts at
+        zero. The sideways bias starts at zero because zero is the honest prior,
+        so with the default the optimiser explores it over a range of a
+        *quarter of a micron* and returns it unchanged -- a parameter that looks
+        fitted and is not. Giving every coordinate an explicit scale in its own
+        units fixes that, and costs nothing.
+        """
+        scale = {"log_sigma": 0.15, "bias_x": 2.0, "bias_y": 2.0,
+                 "logit_eps": 0.5, "log_kappa": 0.4, "log_tau": 0.3,
+                 "log_nu": 0.3, "logit_s_hit": 0.5, "logit_s_miss": 0.5}
+        return np.array([scale[name] for name in self.names])
+
+    def fit(self, beds, hit, theta0=None, maxiter=4000):
         """Maximum likelihood by Nelder-Mead, which needs no derivatives."""
         theta0 = self.start() if theta0 is None else np.asarray(theta0, float)
+        simplex = np.vstack([theta0] + [theta0 + step * np.eye(len(theta0))[i]
+                                        for i, step in enumerate(self.steps)])
         res = optimize.minimize(
             lambda th: -self.log_likelihood(th, beds, hit), theta0,
             method="Nelder-Mead",
-            options={"maxiter": maxiter, "xatol": 1e-3, "fatol": 1e-3},
+            options={"maxiter": maxiter, "xatol": 1e-3, "fatol": 1e-3,
+                     "initial_simplex": simplex},
         )
         return res
 
