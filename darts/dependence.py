@@ -48,8 +48,15 @@ from darts.utils import mm_per_pixel
 #: Segment numbers clockwise from the 20 at the top.
 BOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5]
 
-#: The two targets a player uses in the pure scoring phase.
-TARGETS = (20, 19)
+#: The scoring targets a player uses, in the order they step down through them.
+#:
+#: Not one target, and not two. In the pure scoring phase professionals start at
+#: the treble 20 (97.6% of first darts) and work *down* the board after a miss:
+#: by the third dart 24.5% are at the 19, 5.4% at the 18 and 2.0% at the 17. The
+#: moves are almost all one step -- from the 20 a miss goes to the 19 (28.3%),
+#: from the 19 it goes to the 18 (36.1%) -- which is why one chain with one pair
+#: of probabilities describes the whole thing.
+TARGETS = (20, 19, 18, 17)
 
 
 def treble_centre_mm(number):
@@ -375,10 +382,13 @@ class VisitModel:
                 the treble of *whichever* target it was aimed at. Only the first
                 two columns are used, and only to drive the aim rule.
 
-        The target sequence is summed out exactly: dart 1 is aimed at the treble
-        20, and each later dart stays or switches with a probability that depends
-        only on whether the previous dart hit its treble -- an observed quantity,
-        so this is a valid conditional likelihood.
+        The target sequence is summed out exactly. Dart 1 is aimed at the treble
+        20; each later dart either stays where it was or steps one place down
+        :data:`TARGETS`, with a probability that depends only on whether the
+        previous dart hit its treble. That is an *observed* quantity, so this is
+        a valid conditional likelihood -- every model in the family predicts the
+        same thing, each dart's bed given the beds before it, and their
+        likelihoods are directly comparable.
         """
         params = self.unpack(theta)
         if not np.isfinite(list(params["bias"])).all() or params["sigma"] <= 0:
@@ -390,19 +400,23 @@ class VisitModel:
         total = np.zeros(n)
         for k, w in enumerate(weights):
             lp = log_p[k]                                   # (n_targets, n_beds)
-            # forward pass over the two-state target chain
-            alpha = np.zeros((n, len(TARGETS)))
-            alpha[:, 0] = lp[0, beds[:, 0]]
-            alpha[:, 1] = -np.inf                           # dart 1 is at the 20
+            # forward pass over the step-down chain: stay, or move one place
+            # down TARGETS. The last target is absorbing -- there is nowhere
+            # further down that professionals go in the scoring phase.
+            last = len(TARGETS) - 1
+            alpha = np.full((n, len(TARGETS)), -np.inf)
+            alpha[:, 0] = lp[0, beds[:, 0]]                 # dart 1 is at the 20
             for d in (1, 2):
                 s = np.where(hit[:, d - 1], params["s_hit"], params["s_miss"])
                 stay = np.log(np.maximum(1.0 - s, 1e-300))
                 move = np.log(np.maximum(s, 1e-300))
                 nxt = np.empty_like(alpha)
-                for t in range(len(TARGETS)):
-                    other = 1 - t
+                nxt[:, 0] = alpha[:, 0] + stay
+                for t in range(1, last):
                     nxt[:, t] = np.logaddexp(alpha[:, t] + stay,
-                                             alpha[:, other] + move)
+                                             alpha[:, t - 1] + move)
+                nxt[:, last] = np.logaddexp(alpha[:, last],
+                                            alpha[:, last - 1] + move)
                 alpha = nxt + lp[:, beds[:, d]].T
             total = total + w * np.exp(logsumexp(alpha, axis=1))
         return float(np.sum(np.log(np.maximum(total, 1e-300))))
@@ -418,13 +432,20 @@ class VisitModel:
         return res
 
     # -- simulation ---------------------------------------------------------
-    def simulate(self, theta, n_visits, rng=None):
+    def simulate(self, theta, n_visits, rng=None, return_targets=False):
         """
         Draw visits from the model, returning ``(beds, hit)`` in the same
         encoding :meth:`log_likelihood` consumes.
 
         Used to validate the fitter, and to make the posterior-predictive checks
         that decide between models.
+
+        Args:
+            return_targets (bool): also return the ``(n_visits, 3)`` index into
+                :data:`TARGETS` each dart was actually aimed at. Real data never
+                carries this, but simulated data does, and some checks need the
+                true aim rather than the one inferred from where the dart landed
+                -- a dart thrown at the 20 can easily finish nearer the 18.
         """
         rng = np.random.default_rng() if rng is None else rng
         params = self.unpack(theta)
@@ -433,6 +454,7 @@ class VisitModel:
 
         beds = np.empty((n_visits, 3), dtype=np.int64)
         hit = np.zeros((n_visits, 3), dtype=bool)
+        aimed = np.zeros((n_visits, 3), dtype=np.int64)
         for v in range(n_visits):
             off = (rng.normal(size=2) * params["tau"] if self.shared_offset
                    else np.zeros(2))
@@ -449,11 +471,12 @@ class VisitModel:
             for d in range(3):
                 b = rng.choice(grid.n_beds, p=pmf[t] / pmf[t].sum())
                 beds[v, d] = b
+                aimed[v, d] = t
                 hit[v, d] = b == treble[t]
                 s = params["s_hit"] if hit[v, d] else params["s_miss"]
                 if rng.random() < s:
-                    t = 1 - t
-        return beds, hit
+                    t = min(t + 1, len(TARGETS) - 1)
+        return (beds, hit, aimed) if return_targets else (beds, hit)
 
 
 def bed_geometry(grid):
@@ -557,15 +580,16 @@ def encode_visits(bed_sequences, grid):
     Turn visits of bed names into the ``(beds, hit)`` arrays the model consumes.
 
     ``hit`` is "this dart hit the treble of the target it was aimed at", which is
-    not observed directly. The two targets are on opposite sides of the board, so
-    a treble 20 can only have been aimed at the 20 and a treble 19 at the 19: the
-    ambiguity the aim rule would suffer from does not arise for the outcome that
-    drives it.
+    not observed directly. It does not need to be: a treble can only have been
+    aimed at its own number, since no two of :data:`TARGETS` are close enough for
+    one to be hit while aiming at another. So the outcome that drives the aim
+    rule is observed exactly, even though the aim itself never is.
     """
     index = {name: i for i, name in enumerate(grid.names)}
     beds = np.array([[index.get(b, 0) for b in visit] for visit in bed_sequences],
                     dtype=np.int64)
     beds = grid.collapse[beds]
-    hit = np.array([[b in ("T20", "T19") for b in visit] for visit in bed_sequences],
+    trebles = {f"T{t}" for t in TARGETS}
+    hit = np.array([[b in trebles for b in visit] for visit in bed_sequences],
                    dtype=bool)
     return beds, hit

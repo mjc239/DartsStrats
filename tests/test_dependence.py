@@ -2,8 +2,9 @@
 import numpy as np
 import pytest
 
-from darts.dependence import (BedGrid, VisitModel, bed_labels, encode_visits,
-                              signatures, treble_centre_mm, TARGETS)
+from darts.dependence import (BedGrid, VisitModel, bed_geometry, bed_labels,
+                              encode_visits, signatures, treble_centre_mm,
+                              TARGETS)
 from darts.utils import region_label
 
 
@@ -128,6 +129,29 @@ def test_a_gaussian_alone_cannot_reach_the_far_beds(grid):
     contaminated = 0.87 * tight + 0.13 * grid.wide_pmf(20, 7.0 * 6.0)
     assert contaminated[grid.names.index("D20")] > 1e-3
     assert contaminated[grid.names.index("T20")] > 0.30
+
+
+def test_the_aim_steps_down_the_board_and_never_back_up(grid):
+    """Professionals work 20 -> 19 -> 18 -> 17 after misses, and do not return.
+
+    The chain is one-directional by construction, so a simulated player should
+    show the 19 appearing only from dart 2 and the 18 and 17 only from dart 3 --
+    which is the pattern the real data shows.
+    """
+    model = VisitModel(grid, switching=True)
+    theta = np.array([np.log(8.0), 0.0, -3.5, -0.9])
+    _, _, target = model.simulate(theta, 6000, rng=np.random.default_rng(4),
+                                  return_targets=True)
+
+    share = [(target == i).mean(axis=0) for i in range(len(TARGETS))]
+    assert share[0][0] == 1.0, "dart 1 is always thrown at the 20"
+    for i in range(1, len(TARGETS)):
+        assert share[i][0] == 0.0, f"target {TARGETS[i]} cannot appear on dart 1"
+        # each step down needs one more dart than the last to become reachable
+        assert share[i][2] >= share[i][1] - 1e-9
+    steps = target[:, 1:] - target[:, :-1]
+    assert steps.min() >= 0, "the aim never steps back up"
+    assert steps.max() <= 1, "and never skips a target"
 
 
 def test_encode_visits_pools_beds_no_throw_can_reach(grid):

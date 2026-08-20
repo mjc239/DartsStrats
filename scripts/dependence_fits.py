@@ -50,9 +50,14 @@ MODELS = {
     "C + wide tail": dict(switching=True, contamination=True),
     "D + shared offset": dict(switching=True, contamination=True, shared_offset=True),
     "E + shared scale": dict(switching=True, contamination=True, shared_scale=True),
-    "F + both": dict(switching=True, contamination=True, shared_offset=True,
-                     shared_scale=True),
 }
+
+# A seventh model -- both couplings at once -- was fitted and dropped. On the few
+# hundred visits a single player supplies it is not identified: the optimiser
+# lands with half the darts assigned to the wide component and sigma collapsed to
+# 2.7mm, and it scores *worse* on held-out visits than either coupling alone.
+# That is a statement about eight parameters and 500 visits, not about the
+# mechanism, so reporting it as evidence either way would be misleading.
 
 
 def load_visits():
