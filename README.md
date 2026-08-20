@@ -29,7 +29,7 @@ by measuring what ignoring it costs, in visits per leg.
 
 | | |
 |---|---|
-| `darts/` | the library: board geometry, transition builders, MDP solvers, fitting, measurement design, online belief |
+| `darts/` | the library: board geometry, transition builders, MDP solvers, fitting, measurement design, online belief, and the models for what couples the darts of a visit |
 | `notebooks/experiments/` | the numbered experiments — **start with [its README](notebooks/experiments/README.md)** |
 | `scripts/` | the long-running computations whose outputs are committed under `results/` |
 | `results/` | solved policies, design manifests, simulation studies |
@@ -43,7 +43,7 @@ pip install -r requirements.txt
 pytest -q                        # ~5 minutes
 ```
 
-Then read `notebooks/experiments/README.md`, which maps the nineteen
+Then read `notebooks/experiments/README.md`, which maps the twenty
 experiments, states what each one found, and lists what everything costs to
 re-run.
 
@@ -59,12 +59,17 @@ demonstrates the failure.
 player. No real thrower has been measured with coordinates, and until one is, the
 shape of a single dart's distribution is an assumption.
 
-**The darts of a visit are not independent, and the model assumes they are.**
-Notebook 19 tested that on 300,985 darts of professional competition. Hitting the
-treble 20 raises the next dart's chance of doing the same from 22% to 40% — z
-above 35, present within individual players, absent between visits. Per-dart
-results are unaffected; anything that reads the *spread* of a visit total
-(checkout probability, bust risk, the value of the throw) rests on a distribution
-that is too thin in the tails, and every confidence interval in the fitting
-notebooks is too narrow. That notebook's verdict section works through which is
-which, and proposes the one-parameter fix.
+**A visit is not three independent darts, and the biggest reason is that the aim
+moves.** Notebook 19 measured the coupling on 300,985 darts of professional
+competition: hitting the treble 20 raises the next dart's chance of doing the
+same from 22% to 40%. Notebook 20 took it apart. Professionals use **four**
+scoring targets and step down them after a miss — from the 20, a miss goes to the
+19 a quarter of the time — and the solver has no state for that at all, because
+its aim point depends on the score and never on where the last dart landed. A
+second failure came out of the same work: a single dart's Gaussian tails are far
+too thin to produce the doubles and misses real players actually throw.
+
+What that costs: per-dart results stand, but anything reading the *spread* of a
+visit total (checkout probability, bust risk, the value of the throw) rests on a
+distribution that is too thin, and every confidence interval in the fitting
+notebooks is too narrow. Notebook 20's verdict works through which is which.
