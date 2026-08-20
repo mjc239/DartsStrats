@@ -162,33 +162,48 @@ they stay 95.1% of the time; after missing, 24.8% move to the 19. From the 19,
 a miss moves to the 18 35.7% of the time. Dart 1 is at the 20 96.6% of the time,
 dart 3 only 66.7%. So "missed with dart 1" is substantially "was not aiming at
 the treble 20 with dart 2", and on a target-invariant statistic the coupling
-falls from +18 to +9.9. This replicates across both independent data feeds, five
-years apart.
+falls from +22.3 to +13.1. This replicates across both data feeds, five years
+apart, and it costs the players nothing measurable — **−0.45 ± 0.47 points** —
+because the 19 is flanked by the 3 and the 7 where the 20 is flanked by the 1
+and the 5.
+
+This is not a missing parameter but a missing **state variable**. The solver's
+aim point is a function of the score and the dart index; there is nowhere to
+put "where did my last dart land". The current model gives essentially zero
+probability to a quarter of the darts thrown after the first of a visit.
 
 **A single dart's tails are far too thin.** A Gaussian tight enough to hit the
 treble 20 at a professional rate puts essentially nothing in the double 20, and
-real players land there 1.8% of the time. Adding a wide component — about 9% of
-darts, so broad that for a third of players its width is not identified from
-above — is worth **5.4 log-likelihood units per visit**, against 0.06 for
-everything to do with dependence.
+real players land there 1.8% of the time. A wide component on about 8.5% of
+darts is worth **5.13 log-likelihood units per visit**, against 0.06 for
+everything to do with dependence — and it is the difference between reporting a
+professional's spread as 13.8 mm and as 6.7 mm.
 
-**What is left is a shared *scale*, not a shared offset.** Once the aim rule and
-the tails are in, a per-visit location offset adds 0.012 per visit and helps 12
-of 19 players; a per-visit *scale* — the visit is tight or loose — adds 0.059 and
-helps 17 of 19, and wins outright on 15. The fitted `nu` is 0.4: a player's
-spread wanders by about half again either way from one visit to the next.
+**What is left is a shared *scale*, not a shared offset.** A per-visit location
+offset adds 0.008 a visit and helps 16 of 19 players; a per-visit scale adds
+0.058, helps 18 of 19 and wins outright on 16. The fitted `nu` is about 0.35.
 
-Held-out likelihood understates how much this matters, because a bed is a coarse
-thing to observe. The predictive check is sharper: the observed within-visit
-treble-20 lift is 25.1 points, and the models reproduce 0.1 (no aim rule), 4.1
-(aim rule), 8.8 (plus tails), 13.9 (plus offset) and 21.6 (plus scale).
+**Held-out likelihood is the wrong yardstick for whether it matters.** On beds
+the scale is worth a rounding error. On the visit total — which is what the
+transition matrix is built from — independent darts give a standard deviation of
+35.9 against an observed 40.5 and a maximum **41% too rarely**; with the scale
+the spread is 41.5 and the 180 rate lands within 7%. A bed sequence and a leg of
+darts do not reward the same model.
 
-**But the shared scale is not the true mechanism.** It reaches that 21.6 by
-overshooting the magnitude-coupling signature four-fold (0.080 against an
-observed 0.021 ± 0.003) while leaving the observed *direction* coupling
-unexplained. The likeliest culprit is the aim rule still being too crude: it
+**The shared scale is still not the true mechanism.** It reproduces the
+treble-20 lift by overshooting the magnitude-coupling signature by five standard
+errors (0.067 against an observed 0.021 ± 0.009), where the offset model — which
+loses everywhere else — gets that one nearly right. Neither reaches the observed
+lift of 25.1. The likeliest culprit is the aim rule remaining too crude: it
 reduces the previous dart to hit-or-miss, when a player surely responds to *how*
-they missed. That is the next experiment, and it needs no new data.
+they missed. That is the next experiment and it needs no new data.
+
+**A by-product worth keeping.** With the bias properly fitted, professionals show
+a systematic sideways pull: a median of 1.3 mm and up to 5 mm, with 14 of 19
+pulling toward the 5. The per-player estimates track the raw asymmetry between
+the beds either side of the 20 at r = 0.87. Notebook 13 made a pull the most
+expensive thing to get wrong and notebook 18 found the sideways component the
+only one a scoresheet measures well; this is that measurement, on real players.
 
 * **Feasibility:** high. `darts/dependence.py` holds the model family and
   `results/dependence/` the fits; the remaining work is a richer aim rule.
@@ -438,8 +453,9 @@ forgiving of the way real throws are actually shaped.
    three measured failures, and the only one the current state space cannot
    represent even in principle. Real players move target after a miss; the model's
    aim depends on the score alone. Two cheaper pieces come with it and are nearly
-   free: a wide component on a single dart's throw (worth 5.4 log-likelihood units
-   per visit against 0.06 for all the dependence work) and a per-visit scale.
+   free: a wide component on a single dart's throw (worth 5.13 log-likelihood
+   units per visit against 0.06 for all the dependence work) and a per-visit
+   scale, which takes the 180 rate from 41% too rare to within 7%.
    Nothing else on this list corrects a result that is already published.
 2. **Measure a real player** (§4.2) — everything else is conditional on it, and it is
    an evening's work plus a willing thrower. It is also the only route to the
