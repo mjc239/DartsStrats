@@ -43,11 +43,11 @@ pip install -r requirements.txt
 pytest -q                        # ~5 minutes
 ```
 
-Then read `notebooks/experiments/README.md`, which maps the seventeen
+Then read `notebooks/experiments/README.md`, which maps the nineteen
 experiments, states what each one found, and lists what everything costs to
 re-run.
 
-## Two things to know before trusting a number
+## Three things to know before trusting a number
 
 **Resolution.** Everything runs on a **512-pixel board**. An 8 mm scoring bed is
 9.1 pixels across at 512 and 4.5 at 256, and the coarser board silently
@@ -55,6 +55,16 @@ misjudges any target defined by a bed — by a factor of six for a tight player 
 the treble 20. Notebook 02 establishes this and notebook 09's appendix
 demonstrates the failure.
 
-**It is all simulated.** Every result is computed against a modelled player. The
-model is now rich enough to be worth testing against a real thrower, and that has
-not been done.
+**Almost all of it is simulated.** Notebooks 01–17 compute against a modelled
+player. No real thrower has been measured with coordinates, and until one is, the
+shape of a single dart's distribution is an assumption.
+
+**The darts of a visit are not independent, and the model assumes they are.**
+Notebook 19 tested that on 300,985 darts of professional competition. Hitting the
+treble 20 raises the next dart's chance of doing the same from 22% to 40% — z
+above 35, present within individual players, absent between visits. Per-dart
+results are unaffected; anything that reads the *spread* of a visit total
+(checkout probability, bust risk, the value of the throw) rests on a distribution
+that is too thin in the tails, and every confidence interval in the fitting
+notebooks is too narrow. That notebook's verdict section works through which is
+which, and proposes the one-parameter fix.

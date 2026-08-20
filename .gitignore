@@ -126,3 +126,10 @@ notebooks/transition_probs/checkout_360-pixel_20-sigma-40-margin
 # manifest CSV holds the numbers the match model actually needs.
 results/two_player/*.npz
 results/single_player/grid/
+
+# Real darts scoring data (~35 MB): regenerable from pinned open upstreams with
+# scripts/build_real_data.py (~1 min). Not committed because the four upstream
+# repos carry no licence, so we prefer not to redistribute their contents.
+# data/real/PROVENANCE.md and data/real/CHECKSUMS.txt ARE tracked.
+data/real/*.csv
+.cache/

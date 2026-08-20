@@ -1,0 +1,7 @@
+# SHA-256 of files produced by scripts/build_real_data.py
+# Upstreams are pinned; output is deterministic.
+f0d34733a35f022cb8656f6524cdad28a2499f8d14bd01e68c2ff29b29f7a130  double_attempts.csv
+6936736b387fca125d971160b9e2d879df980defeca0c9e28ce0696a18b99a2f  match_aggregates.csv
+1f7b8c34428b81316455ec97e3fa5d7fb9a0dd5d6f2090722056b736c9ff01f3  per_dart.csv
+7dd8669488d03c61fbce046dd3f3e980edc31537f7d40e00f4851a5e67c1cfbe  per_visit.csv
+3e5b66f08debe15ed38d612e89b14505ba5de54578e932d88347a665e433d4e5  target_outcomes.csv
