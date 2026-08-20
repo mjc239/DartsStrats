@@ -112,6 +112,13 @@ source's own encoding so you can re-derive `bed` yourself if you disagree with m
   title-cased, so they are lower-fidelity than Source 1 (e.g. "Michael Van Gerwen").
   Match the two sources on names with care.
 
+### 42 rows where `bed` and `value` disagree (2022 source)
+
+42 darts are recorded with a named bed (`S1`, `T20`, `D18`…) but `points = 0` — bounce-outs
+or voided darts where the feed logged the segment anyway. `value` is authoritative: the leg
+replay used it, and the 501→0 invariant holds because of it. Treat `bed` as unreliable on
+these rows only; filter with `value == 0 and bed != 'MISS'`. A build gate asserts the count.
+
 ### `post_bust_visit` flag — read this before modelling
 
 The 2017 feed **continues subtracting after a bust rather than reverting the score**. A

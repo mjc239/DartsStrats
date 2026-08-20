@@ -66,6 +66,12 @@ SOURCES = {
 # below and asserted to match this list, so a silent upstream change is caught.
 EXPECTED_2022_EXCLUDED = 11
 
+# 42 rows in the 2022 feed name a real bed (S1, T20, D18...) but report points = 0,
+# i.e. a bounce-out or voided dart where the segment was still logged. `value` is
+# authoritative for arithmetic and is what the leg replay uses; `bed` is unreliable
+# on exactly these rows. Asserted so the count cannot drift unnoticed.
+EXPECTED_2022_BED_VALUE_MISMATCH = 42
+
 PLAYER_SHORT_TO_FULL = {
     "Anderson G": "Gary Anderson", "Aspinall": "Nathan Aspinall",
     "Chisnall": "Dave Chisnall", "Clayton": "Jonny Clayton", "Cross": "Rob Cross",
@@ -265,6 +271,25 @@ def build_2022():
         f"expected {EXPECTED_2022_EXCLUDED} unreconstructable matches, got {len(excluded)}")
     log(f"  [gate] 2022 replay: {closed} legs all close 501->0 on a double; "
         f"{len(kept)} matches kept, {len(excluded)} excluded")
+
+    # GATE: rows whose named bed contradicts the points scored (see constant above).
+    def implied(bed):
+        if bed in ("MISS",):
+            return 0
+        if bed == "BULL":
+            return 50
+        if bed == "25":
+            return 25
+        if bed[0] == "T":
+            return 3 * int(bed[1:])
+        if bed[0] == "D":
+            return 2 * int(bed[1:])
+        return int(bed[1:])
+    mismatch = sum(1 for r in rows if implied(r["bed"]) != r["value"])
+    assert mismatch == EXPECTED_2022_BED_VALUE_MISMATCH, (
+        f"bed/value mismatches = {mismatch}, expected {EXPECTED_2022_BED_VALUE_MISMATCH}")
+    log(f"  [gate] 2022 bed/value: {mismatch} zero-point rows with a named bed "
+        f"(known bounce-outs; trust `value`)")
     return rows
 
 
