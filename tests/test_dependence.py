@@ -154,6 +154,18 @@ def test_the_aim_steps_down_the_board_and_never_back_up(grid):
     assert steps.max() <= 1, "and never skips a target"
 
 
+def test_a_stored_fit_can_be_turned_back_into_a_model(grid):
+    """pack() inverts unpack(), so results/dependence needs no refitting to use."""
+    for kw in [dict(switching=True),
+               dict(switching=True, contamination=True),
+               dict(switching=True, contamination=True, shared_scale=True),
+               dict(switching=True, contamination=True, shared_offset=True,
+                    radial_bias=True)]:
+        model = VisitModel(grid, **kw)
+        theta = model.start()
+        assert np.allclose(model.pack(model.unpack(theta)), theta, atol=1e-9)
+
+
 def test_encode_visits_pools_beds_no_throw_can_reach(grid):
     """Far doubles collapse into the catch-all, so no observation is impossible."""
     beds, hit = encode_visits([["T20", "D16", "MISS"]], grid)

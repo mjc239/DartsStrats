@@ -319,6 +319,31 @@ class VisitModel:
             out["s_hit"] = out["s_miss"] = 0.0
         return out
 
+    def pack(self, params):
+        """
+        Inverse of :meth:`unpack`: a parameter dict back to a vector.
+
+        Lets a fit stored as named columns -- which is how ``results/dependence``
+        keeps them -- be turned back into a working model without refitting.
+        """
+        def logit(p):
+            p = min(max(float(p), 1e-12), 1 - 1e-12)
+            return float(np.log(p / (1 - p)))
+
+        theta = [float(np.log(params["sigma"])), float(np.asarray(params["bias"])[0])]
+        if self.radial_bias:
+            theta.append(float(np.asarray(params["bias"])[1]))
+        if self.contamination:
+            theta += [logit(params["eps"]),
+                      float(np.log(max(params["kappa"] - 1.0, 1e-12)))]
+        if self.shared_offset:
+            theta.append(float(np.log(max(params["tau"], 1e-12))))
+        if self.shared_scale:
+            theta.append(float(np.log(max(params["nu"], 1e-12))))
+        if self.switching:
+            theta += [logit(params["s_hit"]), logit(params["s_miss"])]
+        return np.array(theta)
+
     def start(self):
         """A sane starting point for the optimiser."""
         theta = [np.log(7.5), 0.0]
