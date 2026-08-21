@@ -229,8 +229,56 @@ class TwoComponent(RadialFamily):
         return self._parts(shape)[0] < tol
 
 
+class CoreUniform(RadialFamily):
+    """
+    A Gaussian core plus a flat background: ``(1 - eps) N(sigma) + eps / A``.
+
+    The mixture's wide component kept running off to widths of 20-plus times the
+    core, which is a distribution with no shape left -- at that width it is
+    indistinguishable from "anywhere on the board". This says that outright, and
+    with one parameter instead of two: a fraction ``eps`` of darts land uniformly
+    over the board and are not really throws at the target at all.
+
+    It is the right shape for genuine contamination -- a dart that bounced, a
+    scoring error, a dart from another leg -- and the wrong shape for a throw
+    whose accuracy merely varies. Which of those the data wants is the question.
+    """
+
+    name = "core+uniform"
+    shape_names = ("logit_eps",)
+    #: area the flat component is spread over: the board, out to the double ring
+    AREA = np.pi * 170.0 ** 2
+
+    def _eps(self, shape):
+        return 1.0 / (1.0 + np.exp(-np.clip(shape[0], -30.0, 30.0)))
+
+    def profile(self, r2, scale, shape):
+        eps = self._eps(shape)
+        core = np.exp(-0.5 * r2 / scale ** 2) / (2 * np.pi * scale ** 2)
+        return (1.0 - eps) * core + eps / self.AREA
+
+    def norm(self, scale, shape):
+        # the flat part is only spread over the board, so the profile integrates
+        # to 1 over the board and the pixel sum supplies the rest
+        return 1.0
+
+    def axis_sd(self, scale, shape):
+        eps = self._eps(shape)
+        # a uniform disc of radius R has per-axis variance R^2 / 4
+        return float(np.sqrt((1 - eps) * scale ** 2 + eps * 170.0 ** 2 / 4.0))
+
+    def start_shape(self):
+        return np.array([-3.0])
+
+    def describe(self, shape):
+        return {"eps": self._eps(shape)}
+
+    def is_gaussian(self, shape, tol=1e-3):
+        return self._eps(shape) < tol
+
+
 FAMILIES = {f.name: f for f in (Gaussian(), ExponentialPower(), StudentT(),
-                                TwoComponent())}
+                                CoreUniform(), TwoComponent())}
 
 
 class RadialBedGrid:
