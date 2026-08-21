@@ -24,6 +24,9 @@ also lists what everything costs to re-run.
 | Anisotropic throw with bias (`darts/throw_shape.py`) | solved; grid *and* particle posterior | one MDP solve per covariance; bias is free |
 | Measurement design (`darts/design.py`) | optimum found and certified, c- / D- / L-criteria | ~7 s for the information at every target |
 | Calibration against scores (`darts/calibration.py`) | machinery built and validated; **run against 300,985 real darts** (notebook 19) | exact visit likelihood, milliseconds |
+| What couples a visit's darts (`darts/dependence.py`) | aim rule + throw coupling, fitted per player (notebook 20) | quadrature over the visit latent; seconds a player |
+| The shape of one dart (`darts/throw_families.py`) | six families compared held-out; **a dart is Student-t, `ν ≈ 2.25`** (notebook 21) | whole-board integral, ~4 ms an evaluation |
+| Real match data (`darts/real_data.py`) | one loader, one cleaning rule, contamination report | seconds |
 
 Everything runs on a **512-pixel board** with a **3.52 mm aiming grid**. That is
 not a free parameter: an 8 mm bed is 9.1 pixels across at 512 and 4.5 at 256, and
@@ -97,13 +100,25 @@ by about fivefold, in every model where it has been checked.
 A fourth has since been added by the arrival of real data, and it outranks the
 other three.
 
-**The three darts of a visit are not independent, and the assumption is load
-bearing.** Notebook 19: +18 to +22 points of lift on the next dart's treble-20
-chance, z above 35, surviving every check for a duller explanation. Read that
-notebook's verdict before quoting any number that depends on the *spread* of a
-visit total — checkout probabilities, bust risk, the value of the throw — and
-treat every confidence interval in the fitting notebooks as too narrow. Per-dart
-results are unaffected.
+**A visit is not three independent darts — but the reason is the aim, not the
+throw.** Notebook 19 measured +18 to +22 points of lift on the next dart's
+treble-20 chance. Notebook 20 found about half of that is players *moving target*
+after a miss, stepping down 20 → 19 → 18, which the solver has no state for.
+Notebook 21 found most of what was left is a per-dart heavy tail rather than any
+coupling at all.
+
+The pattern across all three is worth carrying forward on its own: **what looked
+like the darts of a visit influencing each other keeps turning out to be one dart
+being described badly.** Each time the per-dart model improved, the apparent
+dependence shrank — the per-visit coupling is now worth +0.002 a visit on top of
+a Student-t, against +0.51 on top of a Gaussian.
+
+**And check the data before believing a tail.** Notebooks 19 and 20 both filtered
+the scoring phase the same way and both inherited the same defect: the 2017 feed
+leaks checkout darts across leg boundaries, into the one visit that filter
+selects. It manufactured the entire far tail. `darts/real_data.py` now holds one
+definition of the cleaning, and `tests/test_throw_families.py` asserts the defect
+so a rebuild cannot quietly restore it.
 
 ---
 
@@ -172,16 +187,26 @@ aim point is a function of the score and the dart index; there is nowhere to
 put "where did my last dart land". The current model gives essentially zero
 probability to a quarter of the darts thrown after the first of a visit.
 
-**A single dart's tails are far too thin.** A Gaussian tight enough to hit the
-treble 20 at a professional rate puts essentially nothing in the double 20, and
-real players land there 1.8% of the time. A wide component on about 8.5% of
-darts is worth **5.13 log-likelihood units per visit**, against 0.06 for
-everything to do with dependence — and it is the difference between reporting a
-professional's spread as 13.8 mm and as 6.7 mm.
+**A dart is Student-t, not Gaussian.** Notebook 21 fitted six candidate
+distributions per player on held-out legs. The Gaussian loses to five of them for
+all 17 players, and the winner is a **Student-t with `ν ≈ 2.25`** at +0.62
+log-likelihood units a visit — beating a two-component mixture with one parameter
+where the mixture spends two. The rival explanation, that the group is an ellipse
+rather than the tail heavy, was priced identically and gains **nothing** (−0.02,
+worse than the Gaussian it contains).
 
-**What is left is a shared *scale*, not a shared offset.** A per-visit location
-offset adds 0.008 a visit and helps 16 of 19 players; a per-visit scale adds
-0.058, helps 18 of 19 and wins outright on 16. The fitted `nu` is about 0.35.
+Two corrections come with it, both to notebook 20.
+
+*The tail it measured was mostly a data defect.* The 2017 feed leaks the previous
+leg's checkout darts into the next leg's opening visit — and that opening visit is
+78% of the pure-scoring sample. About half of notebook 20's non-Gaussianity was
+that; see `darts/real_data.py`. The Gaussian still loses on clean data, by about
+half as much.
+
+*And the shared scale was a per-dart tail in disguise.* Adding a per-visit scale
+to a **Student-t** is worth +0.002 a visit; adding the same coupling to a Gaussian
+is worth +0.51. What looked like the darts of a visit influencing each other was
+one dart being described badly.
 
 **Held-out likelihood is the wrong yardstick for whether it matters.** On beds
 the scale is worth a rounding error. On the visit total — which is what the
@@ -230,6 +255,34 @@ currently cannot express it.
 
 * **Feasibility:** high. **Applicability:** low-to-medium; worth a footnote
   rather than a project.
+
+### 1.5 The transitions are built from the wrong distribution — **measured, and cheap to fix**
+
+Notebook 21 fitted six candidate landing distributions to seventeen professionals
+on held-out legs. A dart is a **Student-t with `ν ≈ 2.25`** at a core scale near
+6 mm, not a Gaussian, and every transition matrix in this repository is built
+from a Gaussian.
+
+The fix is contained. `darts/transitions.py` builds its maps by correlating each
+bed's indicator mask with a kernel; a Student-t kernel is a different array and
+nothing downstream cares, because the solvers only ever see the resulting
+`(n_points, n_scores)` matrix. The FFT trick survives unchanged.
+
+What it changes is unknown, and that is the argument for doing it early. Two
+things are worth checking first:
+
+* **`σ` is not what the project has been calling it.** With `ν` near 2 a throw's
+  variance barely exists. The familiar "elite ≈ 6.5 mm" matches the Student-t's
+  *core scale* (median 5.98 mm), not a standard deviation; a Gaussian fitted to
+  the same players returns 11.47 mm, splitting the difference between a core and
+  a tail and describing neither.
+* **So anything using `σ²` as a variance is computing with a quantity the data
+  says is not finite** — notebook 09's Fisher information, notebook 10's power
+  analysis, the design criteria in 17. The *rankings* there compare targets at a
+  fixed throw and are probably safe; the absolute dart counts are not.
+
+* **Feasibility:** high — one kernel and a re-solve. **Applicability:** unknown
+  until it is run, which is the point.
 
 ---
 
@@ -452,11 +505,15 @@ forgiving of the way real throws are actually shaped.
 1. **Give the solver a state for the previous dart** (§1.2) — the largest of the
    three measured failures, and the only one the current state space cannot
    represent even in principle. Real players move target after a miss; the model's
-   aim depends on the score alone. Two cheaper pieces come with it and are nearly
-   free: a wide component on a single dart's throw (worth 5.13 log-likelihood
-   units per visit against 0.06 for all the dependence work) and a per-visit
-   scale, which takes the 180 rate from 41% too rare to within 7%.
+   aim depends on the score alone.
    Nothing else on this list corrects a result that is already published.
+1. **Rebuild the transitions from a Student-t** (§1.5) — notebook 21 says a dart's
+   landing point is `t` with `ν ≈ 2.25` at a core scale of about 6 mm, and every
+   transition matrix in the repository is built from a Gaussian. The solver does
+   not care where its `(n_points, n_scores)` matrix came from, so this is a change
+   to one builder and a re-solve. How much it moves any published number is
+   currently unknown, which is the reason to do it early rather than the reason to
+   leave it.
 2. **Measure a real player** (§4.2) — everything else is conditional on it, and it is
    an evening's work plus a willing thrower. It is also the only route to the
    question notebook 19 cannot answer: whether the Gaussian is the right shape for
