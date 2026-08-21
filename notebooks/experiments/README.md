@@ -95,8 +95,6 @@ machine, so those are upper bounds.
 |---|---|---|
 | 06 | Legs, sets, and the bull-up | 4 s |
 | 19 | What real darts says | 6 s |
-| 20 | What couples the darts | not yet timed |
-| 21 | Is a throw Gaussian? | not yet timed |
 | 04 | The two-player leg | 10 s |
 | 01 | Is the value function right? | 1 m 13 |
 | 02 | Millimetres, pixels, and the board | 1 m 16 |
@@ -109,13 +107,15 @@ machine, so those are upper bounds.
 | 12 | The shape of a throw | 6 m 56 ◦ |
 | 08 | What is practice worth? | 8 m 19 |
 | 03 | Did the geometry fixes change anything? | 8 m 33 |
+| 21 | Is a throw Gaussian? | 11 m 14 |
 | 15 | Fast enough to play with | 15 m 16 |
+| 20 | What couples the darts | 22 m 24 |
 | 16 | The lean of a throw | 60 m ◦ |
 | 14 | Shape and pull together | 68 m ◦ |
 | 13 | Aiming off | 69 m |
 | 17 | Measuring all of it | **3 h 25** ◦ |
 
-**Total ≈ 6 h 22.**
+**Total ≈ 8 h 17.**
 
 Notebook 19 is six seconds because all the work is upstream: it reads the files
 `scripts/build_real_data.py` produces. That build is not in the total — it
@@ -151,7 +151,7 @@ theorem.
 most of the above. 13, 14, 16 and 17 were all considerably quicker on the coarser
 board, and considerably less trustworthy.
 
-### The scripts behind 09 and 17
+### The scripts behind 09, 17, 20 and 21
 
 These are not in the notebook times. Their outputs are committed under
 `results/`, so the notebooks re-run without re-solving.
@@ -166,8 +166,10 @@ These are not in the notebook times. Their outputs are committed under
 | `decision_weight.py` | 1 h 46 | `design/decision_weight.npz` |
 | `design_simulation_study.py` | **4 h 02** | `design/simulation_league.csv` |
 | `calibration_recovery.py` | 16 m | `calibration/recovery.csv` |
+| `dependence_fits.py` | 47 m | `dependence/fits.csv`, `dependence/signatures.csv` |
+| `throw_family_fits.py` | 1 h 06 | `throw_family/fits.csv` |
 
-**Total ≈ 7 h 56**, so a full rebuild from nothing is about **14 hours**.
+**Total ≈ 9 h 49**, so a full rebuild from nothing is about **18 hours**.
 
 Run the design scripts in the order listed above: the two-stage study needs the
 lookup table and the robust design, and the simulation study needs the per-band
