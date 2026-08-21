@@ -1,16 +1,21 @@
 # The experiments
 
-Twenty notebooks, in six phases. Each phase exists because the previous one
+Twenty-one notebooks, in six phases. Each phase exists because the previous one
 exposed a gap, so they read best in order — but every notebook states its own
 question and answers it, and the verdict sections are self-contained.
 
 Notebooks 01–17 are **simulated**: no real player is measured in them. Notebook
-18 builds the machinery for meeting real data, **19 uses it** on 300,985 darts of
-professional competition, and **20 works out what the model should do about it**.
-Read 19 and 20 together before trusting anything in phases 2 and 5 too literally.
-19 refutes the independence assumption every transition matrix is built on; 20
-shows that most of what it measured is the *aim* moving between darts, which the
-solver has no state for at all.
+18 builds the machinery for meeting real data and **19, 20 and 21 use it** on
+300,985 darts of professional competition. Read those three together before
+trusting anything in phases 2 and 5 too literally — and read them **in order**,
+because each one substantially revises the last.
+
+19 refutes the independence assumption every transition matrix is built on. 20
+finds that about half of what 19 measured is the *aim* moving between darts,
+which the solver has no state for at all. 21 finds a **data defect** underneath
+20's other conclusion, and that once it is removed a dart is a **Student-t**
+rather than a Gaussian — and that most of the dependence 19 and 20 were chasing
+was one dart being described badly.
 
 All notebooks run on a **512-pixel board** with a **3.52 mm aiming grid**
 (`point_stride=4`). Notebook 02 is where that choice is justified: an 8 mm
@@ -76,7 +81,8 @@ then the model starts growing.
 |---|---|---|
 | **18** Calibrating against real scores | A scoresheet has no aim point. Can the model be fitted to one anyway -- and can it be *refuted*? | **Yes to both.** Above a remaining score of 250 the aim is known to be the treble 20, so a visit total is an exact three-fold convolution and ~2,000 scoring darts measure an elite player to ±0.2mm. More useful: one σ must explain the average, the 180 rate *and* the checkout rate at once. **An isotropic throw says all twenty doubles are equally hard to within 0.22 points; a 1.5:1 tall throw says they vary by 14** -- so ~200 attempts at each of two doubles tests the model's oldest untested assumption |
 | **19** What real darts says | 300,985 professional darts. Three predictions, tested | **Doubles: flat survives** (p = 0.35, with 80% power against a 5-point spread) — but the sixteen players disagree with each other in both directions (I² = 47%), which is a shape signal, not noise. **Visit totals: right at the extremes, wrong in the middle** — no `σ` reproduces the 180 rate and P(exactly 60) at once. **Independence: refuted.** Hitting T20 lifts the next dart's chance by **18–22 points** (z > 35). Not player pooling (34 of 35 individuals), not form drift (the lift is *negative* across the gap between visits), not the filter — but about half of it turns out to be the *aim* moving, which none of those three checks could catch. See 20 |
-| **20** What couples the darts | 19 says the darts are not independent. What replaces the assumption? | **Mostly not the throw.** Professionals use **four** scoring targets and step down them after a miss — from the 20 a miss moves to the 19 24.8% of the time, from the 19 to the 18 35.7%. That is about half of what 19 measured, it replicates across both feeds, and it costs them nothing (**−0.45 ± 0.47** points) because the 19's neighbours pay more than the 20's. The model has no *state* for it. Second: a single dart's tails are far too thin — a wide component on ~8.5% of darts is worth **5.13 log-likelihood units a visit** against 0.06 for all the dependence work, and separates a 6.7 mm professional from a 13.8 mm artefact. What is left is a shared **scale**, winning on 16 of 19 players — worth a rounding error on bed likelihood and the difference between a 180 rate **41% too rare** and one within 7%. It is still the wrong shape: it overshoots the magnitude signature by five standard errors |
+| **20** What couples the darts | 19 says the darts are not independent. What replaces the assumption? | **Mostly not the throw.** Professionals use **four** scoring targets and step down them after a miss — from the 20 a miss moves to the 19 24.8% of the time, from the 19 to the 18 35.7%. That is about half of what 19 measured, it replicates across both feeds, and it costs them nothing (**−0.45 ± 0.47** points) because the 19's neighbours pay more than the 20's. The model has no *state* for it. **Its second conclusion — that a dart's tails are too thin for a Gaussian — is superseded by 21**, which found the tail was a data defect and the fix a different distribution rather than a wider one |
+| **21** Is a throw Gaussian? | A mixture patched the tail. Is that what a throw *is*? | **No, and the tail was not a throw.** The 2017 feed leaks the previous leg's checkout darts into the next leg's opening visit — 6.7% of player-legs against 0.13% in the clean feed — and that visit is **78%** of the pure-scoring sample. 100% of the double 20s sat at exactly one score. Cleaned, the Gaussian still loses to five of six candidates for **all 17 players**, and the winner is a **Student-t, `ν ≈ 2.25`**, beating a two-component mixture with **one** parameter against two. The rival explanation — an elliptical group — was priced identically, shown to be detectable on simulated data, and gains **nothing** (−0.02). Two knock-ons: the per-visit coupling 20 selected is worth **+0.002** on top of a Student-t against +0.51 on a Gaussian, and `σ` is not a standard deviation — the familiar 6.5 mm is a heavy-tailed **core scale** |
 
 ---
 
@@ -89,7 +95,8 @@ machine, so those are upper bounds.
 |---|---|---|
 | 06 | Legs, sets, and the bull-up | 4 s |
 | 19 | What real darts says | 6 s |
-| 20 | What couples the darts | RUNTIME |
+| 20 | What couples the darts | not yet timed |
+| 21 | Is a throw Gaussian? | not yet timed |
 | 04 | The two-player leg | 10 s |
 | 01 | Is the value function right? | 1 m 13 |
 | 02 | Millimetres, pixels, and the board | 1 m 16 |
