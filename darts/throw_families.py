@@ -246,8 +246,12 @@ class CoreUniform(RadialFamily):
 
     name = "core+uniform"
     shape_names = ("logit_eps",)
-    #: area the flat component is spread over: the board, out to the double ring
-    AREA = np.pi * 170.0 ** 2
+    #: the flat component is spread over the scoring area, out to the double
+    #: ring, and is zero beyond it -- a background dart lands *somewhere on the
+    #: board*, which is what makes its contribution a proper distribution with a
+    #: finite spread rather than a constant over the plane
+    RADIUS = 170.0
+    AREA = np.pi * RADIUS ** 2
 
     def _eps(self, shape):
         return 1.0 / (1.0 + np.exp(-np.clip(shape[0], -30.0, 30.0)))
@@ -255,7 +259,12 @@ class CoreUniform(RadialFamily):
     def profile(self, r2, scale, shape):
         eps = self._eps(shape)
         core = np.exp(-0.5 * r2 / scale ** 2) / (2 * np.pi * scale ** 2)
-        return (1.0 - eps) * core + eps / self.AREA
+        # NB the radius is measured from the *target*, not the bull, so this is
+        # a disc of board-sized area centred on where the player is aiming. The
+        # exact placement matters little for a component this diffuse, and it
+        # keeps the family radial like every other one here.
+        flat = np.where(r2 <= self.RADIUS ** 2, eps / self.AREA, 0.0)
+        return (1.0 - eps) * core + flat
 
     def norm(self, scale, shape):
         # the flat part is only spread over the board, so the profile integrates
@@ -265,7 +274,8 @@ class CoreUniform(RadialFamily):
     def axis_sd(self, scale, shape):
         eps = self._eps(shape)
         # a uniform disc of radius R has per-axis variance R^2 / 4
-        return float(np.sqrt((1 - eps) * scale ** 2 + eps * 170.0 ** 2 / 4.0))
+        return float(np.sqrt((1 - eps) * scale ** 2
+                             + eps * self.RADIUS ** 2 / 4.0))
 
     def start_shape(self):
         return np.array([-3.0])
