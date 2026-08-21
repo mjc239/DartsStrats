@@ -35,8 +35,8 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from darts.calibration import SCORING_FLOOR
 from darts.dependence import BedGrid, VisitModel, encode_visits, signatures
+from darts.real_data import scoring_visits
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data", "real")
@@ -60,26 +60,17 @@ MODELS = {
 # mechanism, so reporting it as evidence either way would be misleading.
 
 
-def load_visits():
-    """Pure-scoring visits where the selection filter cannot bite.
+def load_visits(clean=True):
+    """Pure-scoring visits the selection filter cannot bite on, cleaned.
 
-    Restricting to visits that start at ``SCORING_FLOOR + 180`` or more means no
-    visit is selected on its own outcome, so the likelihood needs no truncation
-    term and the dependence measured is not the filter's doing.
+    The cleaning is not cosmetic here. The 2017 feed carries the previous leg's
+    finishing darts into the next leg's opening visit, and every visit with 430
+    or more remaining is near the start of a leg, so that opening visit is most
+    of this sample. Fitting a throw to it measures the contamination: it is what
+    put the far tail into notebook 20's data and bought the wide component its
+    five log-likelihood units a visit. See ``darts.real_data``.
     """
-    per_dart = pd.read_csv(os.path.join(DATA, "per_dart.csv"), low_memory=False)
-    d = per_dart[(per_dart.post_bust_visit == 0)
-                 & per_dart.dart_index.isin([1, 2, 3])]
-    info = d.groupby(KEY).agg(n=("dart_index", "size"),
-                              start=("score_before", "max"),
-                              total=("value", "sum")).reset_index()
-    ok = info[(info.n == 3)
-              & ((info.start - info.total) >= SCORING_FLOOR)
-              & (info.start >= SCORING_FLOOR + 180)]
-    scoring = d.merge(ok[KEY], on=KEY)
-    visits = (scoring.pivot_table(index=KEY, columns="dart_index", values="bed",
-                                  aggfunc="first").dropna().reset_index())
-    return visits
+    return scoring_visits(clean=clean)
 
 
 def split_by_leg(frame, seed=0):
@@ -163,11 +154,13 @@ def main():
                          "visit, some 500x smaller than the smallest effect here")
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--dirty", action="store_true",
+                    help="fit the uncleaned data, to price the contamination")
     ap.add_argument("--out", default=OUT)
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
-    visits = load_visits()
+    visits = load_visits(clean=not args.dirty)
 
     counts = visits.groupby(["source", "player"]).size()
     keep = counts[counts >= args.min_visits].sort_values(ascending=False)
