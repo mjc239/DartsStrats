@@ -66,6 +66,22 @@ class RadialFamily:
         """Unnormalised density at squared radius ``r2``."""
         raise NotImplementedError
 
+    def squared_radius(self, dx, dy, shape):
+        """
+        The squared distance the profile is a function of.
+
+        Circular by default. An anisotropic family overrides this to stretch one
+        axis, which lets "the group is an ellipse" compete against "the tail is
+        heavy" for the same single extra parameter -- they are rival
+        explanations of the same excess and the comparison is only fair if they
+        are priced alike.
+        """
+        return dx * dx + dy * dy
+
+    def area_scale(self, shape):
+        """How much ``squared_radius`` stretches area, so norm() stays exact."""
+        return 1.0
+
     def norm(self, scale, shape):
         """``\\int profile dA`` over the whole plane, exactly."""
         raise NotImplementedError
@@ -287,8 +303,58 @@ class CoreUniform(RadialFamily):
         return self._eps(shape) < tol
 
 
+class EllipticalGaussian(RadialFamily):
+    """
+    A Gaussian group that is taller than it is wide, or wider than tall.
+
+    Not a heavy tail at all -- the rival explanation. An isotropic fit to an
+    elliptical group has to account for the extra reach along the long axis
+    somehow, and with only a scale to play with the only way is a fatter tail.
+    So the two hypotheses predict the same *sort* of excess and cost the same one
+    parameter, which is what makes this a test rather than an extra option.
+
+    The axes are the board's, not the player's: ``ratio`` is the standard
+    deviation along the radial direction at the treble 20 (up and down the 20
+    segment) divided by the sideways one. Notebook 12 measured what shape costs
+    in visits per leg; this asks whether the shape is there at all.
+    """
+
+    name = "elliptical"
+    shape_names = ("log_ratio",)
+
+    def _ratio(self, shape):
+        return float(np.exp(np.clip(shape[0], -2.0, 2.0)))
+
+    def squared_radius(self, dx, dy, shape):
+        # dy runs radially at the treble 20, dx tangentially
+        return dx * dx + (dy / self._ratio(shape)) ** 2
+
+    def area_scale(self, shape):
+        return self._ratio(shape)
+
+    def profile(self, r2, scale, shape):
+        return np.exp(-0.5 * r2 / scale ** 2)
+
+    def norm(self, scale, shape):
+        return 2.0 * np.pi * scale ** 2
+
+    def axis_sd(self, scale, shape):
+        # report the geometric mean, so it is comparable with the round families
+        return float(scale * np.sqrt(self._ratio(shape)))
+
+    def start_shape(self):
+        return np.array([0.0])
+
+    def describe(self, shape):
+        return {"ratio": self._ratio(shape)}
+
+    def is_gaussian(self, shape, tol=1e-3):
+        return abs(self._ratio(shape) - 1.0) < tol
+
+
 FAMILIES = {f.name: f for f in (Gaussian(), ExponentialPower(), StudentT(),
-                                CoreUniform(), TwoComponent())}
+                                CoreUniform(), TwoComponent(),
+                                EllipticalGaussian())}
 
 
 class RadialBedGrid:
@@ -332,11 +398,11 @@ class RadialBedGrid:
         centre = treble_centre_mm(number)
         dx = self._gx - (centre[0] + offset[0])
         dy = self._gy - (centre[1] + offset[1])
-        r2 = dx * dx + dy * dy
+        r2 = family.squared_radius(dx, dy, shape)
         dens = family.profile(r2, scale, shape)
         pmf = np.bincount(self.codes_flat, weights=dens, minlength=self.n_beds)
         pmf *= self.pixel_area
-        total = family.norm(scale, shape)
+        total = family.norm(scale, shape) * family.area_scale(shape)
         # what the board does not cover is off the board, which is a MISS
         pmf[0] += max(total - pmf.sum(), 0.0)
         out = pmf / max(pmf.sum(), 1e-300)

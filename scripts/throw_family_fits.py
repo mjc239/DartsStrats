@@ -53,6 +53,7 @@ KEY = ["source", "player", "leg_id", "visit_index"]
 
 MODELS = [
     ("gaussian", False),
+    ("elliptical", False),
     ("exp-power", False),
     ("student-t", False),
     ("core+uniform", False),
@@ -81,7 +82,7 @@ def split_by_leg(frame, seed=0):
     return frame[~is_test], frame[is_test]
 
 
-def fit_one(job, pixels, seed, n_quad, n_sim):
+def fit_one(job, pixels, seed, n_quad, n_sim, models=None):
     source, player, sub = job
     grid = RadialBedGrid(pixels)
     train, test = split_by_leg(sub, seed=seed)
@@ -92,7 +93,7 @@ def fit_one(job, pixels, seed, n_quad, n_sim):
 
     observed = signatures(b_te, h_te, grid.grid)
     rows = []
-    for family_name, shared in MODELS:
+    for family_name, shared in (MODELS if models is None else models):
         family = FAMILIES[family_name]
         model = FamilyVisitModel(family, grid, shared_scale=shared, n_quad=n_quad)
         t0 = time.time()
@@ -145,6 +146,9 @@ def main():
     ap.add_argument("--n-sim", type=int, default=8000)
     ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--models", default=None,
+                    help="comma-separated family names to fit, for adding a "
+                         "candidate without refitting the rest")
     ap.add_argument("--dirty", action="store_true",
                     help="fit the uncleaned data, to price the contamination")
     ap.add_argument("--out", default=OUT)
@@ -160,8 +164,13 @@ def main():
     work = [(source, player,
              visits[(visits.source == source) & (visits.player == player)])
             for (source, player), _ in keep.items()]
+    models = MODELS
+    if args.models:
+        wanted = {m.strip() for m in args.models.split(",")}
+        models = [m for m in MODELS if m[0] in wanted]
+        print(f"fitting only: {[m[0] for m in models]}", flush=True)
     run = functools.partial(fit_one, pixels=args.pixels, seed=args.seed,
-                            n_quad=args.n_quad, n_sim=args.n_sim)
+                            n_quad=args.n_quad, n_sim=args.n_sim, models=models)
     if args.jobs > 1:
         with mp.Pool(args.jobs) as pool:
             results = pool.map(run, work, chunksize=1)
@@ -169,7 +178,15 @@ def main():
         results = [run(job) for job in work]
 
     rows = [r for player_rows in results for r in player_rows]
-    pd.DataFrame(rows).to_csv(os.path.join(args.out, "fits.csv"), index=False)
+    out_path = os.path.join(args.out, "fits.csv")
+    new = pd.DataFrame(rows)
+    if args.models and os.path.exists(out_path):
+        # adding a candidate: keep the fits already made, replace only these
+        old = pd.read_csv(out_path)
+        old = old[~old.model.isin(new.model.unique())]
+        new = pd.concat([old, new], ignore_index=True)
+        print(f"merged with {len(old)} existing rows", flush=True)
+    new.to_csv(out_path, index=False)
     print(f"\nwrote {args.out}/fits.csv ({len(rows)} rows)")
 
 
