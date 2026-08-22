@@ -205,3 +205,62 @@ def test_a_t_score_distribution_still_sums_to_one(board):
     heavy = ScoreLikelihood(board=board, nu=2.25).score_probabilities(T20, Sigma)
     light = ScoreLikelihood(board=board, nu=np.inf).score_probabilities(T20, Sigma)
     assert heavy[0] > light[0] + 1e-3
+
+
+# --------------------------------------------------------------------------
+# The optimiser change that came with it
+# --------------------------------------------------------------------------
+
+def test_capping_the_backtracks_costs_nothing(board, monkeypatch):
+    """
+    SQUAREM halves its step toward alpha = -1, where the jump degenerates into
+    the two plain EM steps it was built from. An extrapolation that starts a long
+    way out and never succeeds therefore burns one EM step per halving to arrive
+    back where it began. That is rare when the throw is Gaussian and routine when
+    it is a t, whose EM path is more curved -- it was spending forty-odd steps an
+    iteration on it.
+
+    Capping the halvings is only safe if the fallback really is those two steps,
+    which is the claim this test pins: the same fits, in fewer steps. Gaussian
+    results have to be identical to the last bit, because they are published.
+    """
+    import darts.fitting as fitting
+
+    uncapped = {}
+
+    def run(nu, cap):
+        original = fitting._squarem
+
+        def patched(*args, **kwargs):
+            kwargs["max_backtracks"] = cap
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(fitting, "_squarem", patched)
+        sessions = simulate_session(DESIGN[:2], 200, [1.0, -2.0],
+                                    12.0 ** 2 * np.eye(2), board=board,
+                                    seed=1002, nu=nu)
+        out = fitting.fit_multi_target(sessions, board=board, tol=1e-11,
+                                       max_iter=1500, nu=nu)
+        monkeypatch.undo()
+        return out
+
+    for nu in (None, 2.25):
+        loose = run(nu, 10_000)
+        tight = run(nu, 8)
+        assert tight["n_em_steps"] <= loose["n_em_steps"]
+        if nu is None:
+            assert tight["sigma_mm"] == loose["sigma_mm"]
+            assert (tight["b"] == loose["b"]).all()
+            assert tight["log_likelihood"] == loose["log_likelihood"]
+        else:
+            assert tight["sigma_mm"] == pytest.approx(loose["sigma_mm"], rel=1e-6)
+            assert tight["log_likelihood"] == pytest.approx(
+                loose["log_likelihood"], abs=1e-6)
+            uncapped[nu] = (loose["n_em_steps"], tight["n_em_steps"])
+
+    # The saving is not marginal on a sample that triggers it -- here 323 EM
+    # steps become 85, seven seconds become two -- and it is worth knowing that
+    # plenty of samples never trigger it at all. The behaviour is data-dependent,
+    # which is why it went unnoticed under a Gaussian.
+    loose_steps, tight_steps = uncapped[2.25]
+    assert tight_steps < 0.5 * loose_steps
