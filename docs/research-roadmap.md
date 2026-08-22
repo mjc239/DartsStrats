@@ -276,10 +276,18 @@ things are worth checking first:
   *core scale* (median 5.98 mm), not a standard deviation; a Gaussian fitted to
   the same players returns 11.47 mm, splitting the difference between a core and
   a tail and describing neither.
-* **So anything using `σ²` as a variance is computing with a quantity the data
-  says is not finite** — notebook 09's Fisher information, notebook 10's power
-  analysis, the design criteria in 17. The *rankings* there compare targets at a
-  fixed throw and are probably safe; the absolute dart counts are not.
+* **The measurement-design machinery assumes a Gaussian likelihood, not just a
+  Gaussian throw.** `darts/design.py` builds its score function from a Gaussian
+  kernel — `d(-q/2)/dμ = Σ⁻¹u`, and the σ derivative alongside it — so notebook
+  09's Fisher information, notebook 10's power analysis and the criteria in 17
+  are all *correctly computed for the wrong model*. Under a Student-t the score
+  function is different (it downweights far darts instead of letting them
+  dominate), so both the information and the parameter being estimated change.
+  The *rankings* compare targets at a fixed throw and are the more likely to
+  survive; the absolute dart counts — "233 darts to prove a millimetre" — are the
+  ones to re-derive. Which way they move is not obvious and has not been
+  computed: heavy tails can carry more information about a scale than a Gaussian
+  does, not less.
 
 * **Feasibility:** high — one kernel and a re-solve. **Applicability:** unknown
   until it is run, which is the point.
