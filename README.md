@@ -65,11 +65,26 @@ competition: hitting the treble 20 raises the next dart's chance of doing the
 same from 22% to 40%. Notebook 20 took it apart. Professionals use **four**
 scoring targets and step down them after a miss — from the 20, a miss goes to the
 19 a quarter of the time — and the solver has no state for that at all, because
-its aim point depends on the score and never on where the last dart landed. A
-second failure came out of the same work: a single dart's Gaussian tails are far
-too thin to produce the doubles and misses real players actually throw.
+its aim point depends on the score and never on where the last dart landed.
 
-What that costs: per-dart results stand, but anything reading the *spread* of a
-visit total (checkout probability, bust risk, the value of the throw) rests on a
-distribution that is too thin, and every confidence interval in the fitting
-notebooks is too narrow. Notebook 20's verdict works through which is which.
+**A dart is not Gaussian — it is Student-t.** Notebook 21 fitted six candidate
+distributions to every player, held out. The Gaussian loses to every one of them
+for every player, and the winner is a **Student-t with `ν ≈ 2.25`**, beating a
+two-component mixture with one parameter where the mixture needs two. It has a
+reading, not just a fit: a Student-t *is* a Gaussian whose width is redrawn for
+every dart. The rival explanation — that the group is an ellipse rather than the
+tail heavy — was fitted at the same price and gains nothing at all.
+
+That has a consequence for every `σ` quoted anywhere in this project. With `ν`
+near 2 a throw's variance barely exists, so `σ` is not a summary of one. The
+familiar "elite ≈ 6.5 mm" is the **core scale** of a heavy-tailed throw (median
+5.98 mm across professionals), not a standard deviation; fitting a Gaussian
+instead returns 11.47 mm, a compromise between core and tail that describes
+neither.
+
+**And check the data before you trust a tail.** Notebook 21 exists because
+notebook 20 reached the opposite conclusion from the same question. The 2017 feed
+carries the previous leg's finishing darts into the next leg's opening visit, in
+6.7% of player-legs — and since every visit with 430 or more remaining sits near a
+leg start, that visit was most of the sample. It manufactured a far tail that
+about half of notebook 20's non-Gaussianity was fitting.
