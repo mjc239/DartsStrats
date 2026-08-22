@@ -20,10 +20,17 @@ what is it worth?" without re-solving:
     checkout_pct    (171,)      P(finish this visit) by starting score
     expected_score  (n,)        expected score of one dart at each aim point
 
+``--nu`` solves the same bands with a Student-t throw instead of a Gaussian,
+writing into ``results/student_t/`` and ``results/manifest_student_t.csv`` so
+the Gaussian results stay where they are and the two can be compared. The band
+is held fixed at the same three-dart average rather than the same sigma -- see
+``darts.transitions.matched_scale`` for why that is not a free choice.
+
 Usage:
     python scripts/solve_single_player.py                  # all bands
     python scripts/solve_single_player.py --bands league club
     python scripts/solve_single_player.py --grid           # the fine sigma grid
+    python scripts/solve_single_player.py --nu 2.25 3 5    # Student-t throws
 """
 import argparse
 import os
@@ -36,7 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from darts import players
 from darts.mdp_3turn import ThreeDartMDP
-from darts.transitions import transition_arrays
+from darts.transitions import matched_scale, transition_arrays
 
 OBJECTIVES = {"darts": dict(dart_cost=1.0, turn_cost=0.0),
               "visits": dict(dart_cost=0.0, turn_cost=1.0)}
@@ -71,12 +78,15 @@ def checkout_percentages(model, probs, checkout_probs, scores, max_score=170):
 
 def solve_and_save(sigma, label, outdir, objectives=("darts", "visits"),
                    board_pixels=None, point_stride=None, game_start=None,
-                   with_checkouts=True):
+                   with_checkouts=True, nu=None, band=None):
     board_pixels = board_pixels or players.BOARD_PIXELS
     point_stride = point_stride or players.POINT_STRIDE_SINGLE
     game_start = game_start or players.GAME_START
 
-    tr = transition_arrays(board_pixels, sigma, point_stride=point_stride)
+    # A t of the same scale is a different player, so the band is carried over
+    # by its three-dart average and the scale follows from that.
+    scale = matched_scale(sigma, nu, board_pixels=board_pixels)
+    tr = transition_arrays(board_pixels, scale, point_stride=point_stride, nu=nu)
     P, CP, S = tr["probs"], tr["checkout_probs"], tr["allowed_scores"]
 
     rows = []
@@ -94,6 +104,7 @@ def solve_and_save(sigma, label, outdir, objectives=("darts", "visits"),
             expected_score=P @ S,
             sigma=sigma, board_pixels=board_pixels, point_stride=point_stride,
             game_start=game_start, objective=obj, label=label,
+            nu=np.nan if nu is None else nu, scale_mm=scale,
         )
         if with_checkouts:
             payload["checkout_pct"] = checkout_percentages(m, P, CP, S)
@@ -101,11 +112,14 @@ def solve_and_save(sigma, label, outdir, objectives=("darts", "visits"),
         path = os.path.join(outdir, f"{label}_{obj}.npz")
         np.savez_compressed(path, **payload)
 
-        row = {"band": label, "sigma_mm": sigma, "objective": obj,
-               "aiming_points": len(tr["points"]),
+        row = {"band": band or label, "sigma_mm": sigma,
+               "objective": obj, "aiming_points": len(tr["points"]),
                "value_501": round(-m.V1[501], 4),
                "seconds": round(elapsed, 1),
                "path": os.path.relpath(path)}
+        if nu is not None:
+            # Only for a t, so the Gaussian manifest keeps the columns it has.
+            row["nu"], row["scale_mm"] = nu, round(scale, 4)
         if obj == "darts":
             row["three_dart_average"] = round(players.three_dart_average(-m.V1[501]), 2)
             row["darts_from_170"] = round(-m.V1[170], 3)
@@ -123,28 +137,48 @@ def main():
     ap.add_argument("--grid", action="store_true",
                     help="also solve the fine sigma grid (visits objective only, "
                          "no checkout tables) for sensitivity work")
-    ap.add_argument("--outdir", default="results/single_player")
+    ap.add_argument("--outdir", default=None,
+                    help="default: results/single_player, or results/student_t "
+                         "when --nu is given")
+    ap.add_argument("--nu", nargs="*", type=float, default=None,
+                    help="solve with a Student-t throw at these degrees of "
+                         "freedom instead of a Gaussian. 2.25 is what notebook "
+                         "21 fitted; inf is the Gaussian and is a useful check")
     args = ap.parse_args()
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    outdir = os.path.join(root, args.outdir)
+    student_t = args.nu is not None
+    default_out = "results/student_t" if student_t else "results/single_player"
+    outdir = os.path.join(root, args.outdir or default_out)
     os.makedirs(outdir, exist_ok=True)
 
     bands = args.bands or list(players.ABILITY_BANDS)
+    nus = args.nu if student_t else [None]
     print(f"board {players.BOARD_PIXELS}px, stride {players.POINT_STRIDE_SINGLE}, "
-          f"{len(bands)} bands")
+          f"{len(bands)} bands"
+          + (f", nu in {nus}" if student_t else ""))
 
     rows = []
-    for band in bands:
-        rows += solve_and_save(players.ABILITY_BANDS[band], band, outdir)
+    for nu in nus:
+        for band in bands:
+            label = band if nu is None else f"{band}_nu{nu:g}"
+            rows += solve_and_save(players.ABILITY_BANDS[band], label, outdir,
+                                   nu=nu, band=band)
 
     import pandas as pd
     df = pd.DataFrame(rows)
-    manifest = os.path.join(root, "results", "manifest_single_player.csv")
+    if student_t:
+        lead = ["band", "sigma_mm", "nu", "scale_mm", "objective"]
+        df = df[lead + [c for c in df.columns if c not in lead]]
+    name = "manifest_student_t.csv" if student_t else "manifest_single_player.csv"
+    manifest = os.path.join(root, "results", name)
     df.to_csv(manifest, index=False)
     print(f"\nwrote {manifest}")
-    print(df[df.objective == "darts"][
-        ["band", "sigma_mm", "value_501", "three_dart_average"]].to_string(index=False))
+    cols = ["band", "sigma_mm", "value_501", "three_dart_average"]
+    if student_t:
+        cols.insert(2, "nu")
+        cols.insert(3, "scale_mm")
+    print(df[df.objective == "darts"][cols].to_string(index=False))
 
     if args.grid:
         griddir = os.path.join(outdir, "grid")
