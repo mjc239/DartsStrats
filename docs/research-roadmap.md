@@ -28,6 +28,7 @@ also lists what everything costs to re-run.
 | The shape of one dart (`darts/throw_families.py`) | six families compared held-out; **a dart is Student-t, `ν ≈ 2.25`** (notebook 21) | whole-board integral, ~4 ms an evaluation |
 | Real match data (`darts/real_data.py`) | one loader, one cleaning rule, contamination report | seconds |
 | Throwing the dart the data says (`darts/transitions.py`) | Student-t kernel, matched on the three-dart average, solved at every band (notebook 22) | zero-padded FFT, ~4x the Gaussian; 15 min for three `nu` at seven bands |
+| Fitting and measuring one (`darts/fitting.py`, `darts/design.py`) | scale-mixture EM with `nu` profiled; the t score function for the Fisher information (notebook 23) | one extra weight on the same pixel sum; seconds a fit |
 
 Everything runs on a **512-pixel board** with a **3.52 mm aiming grid**. That is
 not a free parameter: an 8 mm bed is 9.1 pixels across at 512 and 4.5 at 256, and
@@ -257,7 +258,7 @@ currently cannot express it.
 * **Feasibility:** high. **Applicability:** low-to-medium; worth a footnote
   rather than a project.
 
-### 1.5 The transitions are built from the wrong distribution — **done for the solvers, open for the fitting**
+### 1.5 Everything was built from the wrong distribution — **done, with one number that did not survive**
 
 Notebook 21 fitted six candidate landing distributions to seventeen professionals
 on held-out legs. A dart is a **Student-t with `ν ≈ 2.25`** at a core scale near
@@ -295,29 +296,50 @@ What it moves, matched on the three-dart average via `matched_scale`:
   on variance, which hands a "pro" a 2.67 mm core and a 147 average — lands
   independently on the cores notebook 21 fitted.
 
-**The fitting half is open**, and it is what stops a real player being given a
-`ν` and a core from their scoresheet:
+**The fitting half is done too** (notebook 23), and it turned out to be the same
+change twice. A Student-t is a Gaussian whose width is redrawn every dart, so
+that width is a second latent variable alongside the landing point, and its
+conditional expectation is one weight:
 
-* `darts/fitting.py`'s EM has a Gaussian M-step. A Student-t EM is the standard
-  scale-mixture one — an E-step weight `u = (ν+2)/(ν+q)` per dart, then the same
-  weighted Gaussian M-step, with `ν` profiled on a grid.
-* **`darts/design.py` builds its score function from a Gaussian likelihood**, not
-  merely for a Gaussian throw — `d(-q/2)/dμ = Σ⁻¹u`, and the σ derivative
-  alongside it — so notebook 09's Fisher information, notebook 10's power analysis
-  and the criteria in 17 are all *correctly computed for the wrong model*. Under a
-  Student-t the score function is different (it downweights far darts instead of
-  letting them dominate), so both the information and the parameter being
-  estimated change. The *rankings* compare targets at a fixed throw and are the
-  more likely to survive; the absolute dart counts — "233 darts to prove a
-  millimetre" — are the ones to re-derive. Which way they move is not obvious and
-  has not been computed: heavy tails can carry more information about a scale than
-  a Gaussian does, not less.
+    u(z) = E[W | Z = z] = (ν + 2) / (ν + q(z))
+
+* `darts/fitting.py`'s E step applies `u` pixel by pixel inside the sum it
+  already did; the M step is the *same* weighted Gaussian one. `ν` is not
+  estimated inside the EM but **profiled** by `profile_nu`, because notebook 21
+  found it correlated with the core scale at +0.62 and a point estimate would hide
+  the ridge. From 750 darts of an 8.0mm-core t, the t fit returns 8.09mm and a
+  Gaussian returns 12.45mm — the core-versus-tail compromise, reproduced on
+  demand. It does **not** improve the bias, which was being estimated badly for an
+  unrelated reason.
+* **`darts/design.py` built its score function from a Gaussian likelihood**, not
+  merely for a Gaussian throw. The t's score function is the Gaussian's multiplied
+  by the same `u` — so the same weight, arrived at independently. Two modules that
+  share no code agree on the derivative to 2e-12.
+
+What that cost, and it is the part worth carrying forward:
+
+* **The design *rankings* survive.** Bull for tight players, the big single at
+  ~136mm for loose ones, the treble ring for the very loose — the structure of
+  notebook 09's answer is intact. The threshold moves: the bull stays optimal at
+  σ = 16mm under a t where the Gaussian had already switched.
+* **The dart counts do not.** A heavy tail carries **less** information about the
+  core, in every band — which was the open question, and it could have gone the
+  other way. Matched through `matched_scale` so the improvement being detected is
+  the same one, notebook 10's **"233 darts to prove a millimetre" becomes 506**,
+  and a pub player's 4,857 becomes **23,634**. Notebook 17's criteria are on the
+  same footing and have not been re-run.
+* Every one of those numbers is conditional on knowing `ν`, and notebook 23 shows
+  a few hundred darts of *scores* pin down that a tail exists (+57 log-units) far
+  better than how heavy it is (the profile peaks at 3 when the truth is 2.25). A
+  session that must learn `ν` too is longer still.
 * `darts/bayes.py` and `darts/throw_shape.py` are Gaussian throughout and have not
-  been touched.
+  been touched, so the live belief updates and the anisotropy work still assume a
+  Gaussian throw.
 
-* **Feasibility:** the solver half is done; the fitting half is a weighted EM and
-  a new score function. **Applicability:** measured for the solvers (notebook 22),
-  unknown for the design results until the score function is re-derived.
+* **Feasibility:** done, in `transitions.py`, `fitting.py` and `design.py`;
+  `bayes.py` and `throw_shape.py` remain. **Applicability:** measured. The
+  checkout phase and the length of a measurement session both move materially;
+  the scoring advice and the design rankings do not.
 
 ---
 
@@ -542,16 +564,14 @@ forgiving of the way real throws are actually shaped.
    represent even in principle. Real players move target after a miss; the model's
    aim depends on the score alone.
    Nothing else on this list corrects a result that is already published.
-1. **Teach the fitting side the Student-t** (§1.5, the open half) — the solvers can
-   throw one now (notebook 22) but nothing can *estimate* one from a scoresheet,
-   so a real player still cannot be given a `ν` and a core. `fitting.py` needs the
-   scale-mixture EM (an E-step weight, then the same weighted M-step, `ν` profiled)
-   and `design.py` needs the t score function, which is the part that decides
-   whether "233 darts to prove a millimetre" was ever the right number.
-2. **Measure a real player** (§4.2) — everything else is conditional on it, and it is
-   an evening's work plus a willing thrower. It is also the only route to the
-   question notebook 19 cannot answer: whether the Gaussian is the right shape for
-   *one* dart, as opposed to the right number of them.
+2. **Measure a real player, now that it is worth more than it was** (§4.2) —
+   everything else is conditional on it, and it is an evening's work plus a
+   willing thrower. §1.5 has sharpened why. Notebook 23 can now fit a `ν` and a
+   core from nothing but a scoresheet, but showed that scores pin down *that*
+   there is a tail far better than *how heavy* it is; coordinates would settle in
+   one evening what a scoresheet cannot settle at all. And since the same work
+   roughly doubled the darts a measurement session needs, designing that session
+   correctly matters more than it did.
 3. **Calibration across many players** (§4.1) — notebook 19 fitted one. The estimator
    and the cleaned data are both in the repo, so this is now cheap, and checkout
    percentage by score is the branch that would speak to §1.1.

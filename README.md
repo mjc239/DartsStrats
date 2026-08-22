@@ -45,7 +45,7 @@ pip install -r requirements.txt
 pytest -q                        # ~5 minutes
 ```
 
-Then read `notebooks/experiments/README.md`, which maps the twenty-two
+Then read `notebooks/experiments/README.md`, which maps the twenty-three
 experiments, states what each one found, and lists what everything costs to
 re-run.
 
@@ -95,6 +95,18 @@ on the player: elite and pro finish 0.11 darts sooner as a t, the middle bands
 and worse at a whole sector, and legs at different standards are made of those in
 different proportions. With 50 left and one dart, a Gaussian pro sets up for 32
 and a Student-t pro throws at the bull.
+
+**Measuring a Student-t player takes about twice as many darts.** Notebook 23
+puts the t into the fitting and measurement-design machinery, where it costs a
+single weight: `u = (ν+2)/(ν+q)` in the EM's E step, and the same factor
+multiplying the Gaussian score function in the Fisher information. That weight is
+the whole story — a dart a long way from the aim point is powerful evidence of a
+wide *player* under a Gaussian and is discounted under a t, because a wide *dart*
+explains it. So a Gaussian fitted to Student-t darts returns a core-versus-tail
+compromise (12.45mm for a thrower whose core is 8.0mm), and a heavy tail carries
+*less* information about the core than a Gaussian does. Where to throw to be
+measured survives; how long does not — **233 darts to prove a millimetre becomes
+506**, and a pub player's 4,857 becomes 23,634.
 
 **And check the data before you trust a tail.** Notebook 21 exists because
 notebook 20 reached the opposite conclusion from the same question. The 2017 feed

@@ -94,7 +94,7 @@ ISO_PARAMS = ("b_x", "b_y", "sigma")
 # Exact derivatives of the throw kernel
 # --------------------------------------------------------------------------
 
-def kernel_derivatives(pixels, Sigma_mm, mm_per_px, params="full"):
+def kernel_derivatives(pixels, Sigma_mm, mm_per_px, params="full", nu=None):
     """
     The normalised Gaussian throw kernel and its exact derivatives with respect
     to the session parameters.
@@ -114,17 +114,45 @@ def kernel_derivatives(pixels, Sigma_mm, mm_per_px, params="full"):
     ``Sigma`` in pixels gives the same number as in millimetres. Only the
     derivatives carry the unit conversion.
 
+    A Student-t changes this in exactly one place, and the place is worth
+    naming. Its kernel is ``W = (1 + q/nu)^{-(nu+2)/2}``, so
+
+        d log W / dtheta = ((nu+2)/(nu+q)) * d(-q/2)/dtheta
+
+    -- the Gaussian score function multiplied pointwise by ``(nu+2)/(nu+q)``,
+    which is the same weight :meth:`darts.fitting.ScoreLikelihood.mixture_weight`
+    puts on a dart in the E step, and for the same reason. Under a Gaussian a
+    dart far from the aim point dominates the score function, because the only
+    way to explain it is a wide player. Under a t it is discounted, because it
+    can be explained as a wide *dart*. That is a change of character rather than
+    of magnitude, and it is why the design results have to be recomputed rather
+    than adjusted.
+
+The normalisation changes with it, for the reason
+    :mod:`darts.transitions` had to change: a t leaves real mass off the board,
+    and dividing by the window sum would put it back. The t kernel is normalised
+    analytically instead, so ``K`` sums to less than one and the derivative of
+    the normaliser is ``d log(2 pi sqrt(det Sigma)) / dtheta`` rather than an
+    expectation under ``K``. :func:`information_maps` then books the deficit as
+    a miss. The Gaussian path is untouched and still normalises over the window,
+    where the two are the same number to 1e-15.
+
     Args:
         pixels (int): board resolution.
-        Sigma_mm (np.ndarray): 2x2 covariance in mm^2, in (x, y) order.
+        Sigma_mm (np.ndarray): 2x2 covariance in mm^2, in (x, y) order -- or the
+            scale matrix, when ``nu`` is given.
         mm_per_px (float): board scale.
         params (str): ``"full"`` for ``(b_x, b_y, S_xx, S_xy, S_yy)``, or
             ``"isotropic"`` for ``(b_x, b_y, sigma)`` with ``Sigma = sigma^2 I``.
+        nu (float): degrees of freedom of a Student-t throw. ``None`` is the
+            Gaussian and is the path every existing result took.
 
     Returns:
         tuple: ``(K, dK)`` with ``K`` of shape (pixels, pixels) and ``dK`` of
         shape (n_params, pixels, pixels).
     """
+    if nu is not None and nu <= 0:
+        raise ValueError("nu must be positive")
     S = np.asarray(Sigma_mm, dtype=float)
     S_px = S / mm_per_px ** 2
     det = S_px[0, 0] * S_px[1, 1] - S_px[0, 1] ** 2
@@ -134,8 +162,13 @@ def kernel_derivatives(pixels, Sigma_mm, mm_per_px, params="full"):
     x = offs[None, :]                      # column offset, the x direction
     y = offs[:, None]                      # row offset, the y direction
     q = inv[0, 0] * x * x + 2 * inv[0, 1] * x * y + inv[1, 1] * y * y
-    W = np.exp(-q / 2.0)
-    K = W / W.sum()
+    if nu is None or np.isinf(nu):
+        W = np.exp(-q / 2.0)
+        weight = 1.0
+    else:
+        W = np.exp(-0.5 * (nu + 2.0) * np.log1p(q / nu))
+        weight = (nu + 2.0) / (nu + q)
+    K = W / W.sum() if nu is None else W / (2 * np.pi * np.sqrt(det))
 
     # (Sigma^-1 u) in pixel units; dividing by mm_per_px puts it in mm units
     a = inv[0, 0] * x + inv[0, 1] * y
@@ -161,13 +194,30 @@ def kernel_derivatives(pixels, Sigma_mm, mm_per_px, params="full"):
     else:
         raise ValueError("params must be 'full' or 'isotropic'")
 
-    G = np.stack([np.broadcast_to(g, q.shape) for g in G])
-    dK = K[None] * (G - (K[None] * G).sum(axis=(1, 2))[:, None, None])
+    # The t's score function is the Gaussian's, discounted where a dart would
+    # have had to travel. At nu = inf the weight is 1 and this line is a no-op.
+    G = np.stack([np.broadcast_to(g, q.shape) * weight for g in G])
+    if nu is None:
+        # K is normalised by its own sum, so the correction is an expectation
+        # under K -- which is what makes the discrete kernel's probabilities sum
+        # to one exactly, whatever the quadrature error.
+        correction = (K[None] * G).sum(axis=(1, 2))
+    else:
+        # K is normalised analytically, so the correction is the derivative of
+        # log(2 pi sqrt(det Sigma)). It does not depend on the pixel, and it is
+        # zero for the bias, which does not move the determinant.
+        inv_mm = inv / mm_per_px ** 2          # Sigma^-1 in mm^-2
+        if params == "full":
+            correction = np.array([0.0, 0.0, 0.5 * inv_mm[0, 0],
+                                   inv_mm[0, 1], 0.5 * inv_mm[1, 1]])
+        else:
+            correction = np.array([0.0, 0.0, 2.0 / float(np.sqrt(np.trace(S) / 2))])
+    dK = K[None] * (G - correction[:, None, None])
     return K, dK
 
 
 def information_maps(board_pixels, Sigma_mm, params="full", board=None,
-                     floor=1e-12):
+                     floor=1e-12, nu=None):
     """
     Per-throw Fisher information for every pixel of the board, treated as a
     target.
@@ -176,11 +226,14 @@ def information_maps(board_pixels, Sigma_mm, params="full", board=None,
     each of its derivatives, so the whole board costs a handful of transforms
     rather than one evaluation per candidate target.
 
-    A caveat inherited from :mod:`darts.transitions`: the FFT wraps the kernel
-    round the array edge. The board array extends to 225.5mm and targets are
-    inside the 170mm double ring, so for a 28mm player the nearest edge is
-    about two sigma away; the wrapped mass lands on the far edge, which is also
-    zero-scoring, so it mostly cancels within the ``0`` category.
+A caveat inherited from :mod:`darts.transitions`: for a Gaussian the FFT wraps
+    the kernel round the array edge. The board array extends to 225.5mm and
+    targets are inside the 170mm double ring, so for a 28mm player the nearest
+    edge is about two sigma away; the wrapped mass lands on the far edge, which
+    is also zero-scoring, so it mostly cancels within the ``0`` category. For a
+    Student-t it would not cancel and is not small, so that path zero-pads the
+    transform instead and books what leaves the array as a miss -- the same
+    treatment, and the same reason, as the transition builder.
 
     Args:
         board_pixels (int): resolution.
@@ -190,6 +243,10 @@ def information_maps(board_pixels, Sigma_mm, params="full", board=None,
         board (np.ndarray): prebuilt board array.
         floor (float): scores rarer than this at a given target are dropped
             from the sum there, to keep ``1/p`` finite.
+        nu (float): degrees of freedom of a Student-t throw. ``None`` is the
+            Gaussian. Note what is then being measured: ``sigma_mm`` is the t's
+            **core scale**, so a standard error on it is a standard error on the
+            core and not on a spread.
 
     Returns:
         dict: ``info`` (pixels, pixels, n_params, n_params), ``probs``
@@ -205,30 +262,69 @@ def information_maps(board_pixels, Sigma_mm, params="full", board=None,
     n = board.shape[0]
     mm_px = mm_per_pixel(n)
 
-    K, dK = kernel_derivatives(n, Sigma_mm, mm_px, params=params)
+    K, dK = kernel_derivatives(n, Sigma_mm, mm_px, params=params, nu=nu)
     npar = dK.shape[0]
 
-    K_ft = np.fft.fft2(np.fft.ifftshift(K))
-    dK_ft = np.stack([np.fft.fft2(np.fft.ifftshift(d)) for d in dK])
+    pad = nu is not None
+    m = 2 * n if pad else n
+
+    def centred_ft(a):
+        if not pad:
+            return np.fft.fft2(np.fft.ifftshift(a))
+        # ifftshift would fold the negative offsets into the middle of a padded
+        # array rather than its end; roll them into place after padding instead.
+        buf = np.zeros((m, m))
+        buf[:n, :n] = a
+        return np.fft.fft2(np.roll(buf, (-(n // 2), -(n // 2)), axis=(0, 1)))
+
+    K_ft = centred_ft(K)
+    dK_ft = np.stack([centred_ft(d) for d in dK])
 
     allowed = np.unique(board).astype(np.int32)
     info = np.zeros((n, n, npar, npar))
     probs = np.empty((len(allowed), n, n))
-
-    for k, s in enumerate(allowed):
-        mask_ft = np.fft.fft2((board == s).astype(np.float64))
-        p = np.real(np.fft.ifft2(mask_ft * K_ft))
-        g = np.stack([np.real(np.fft.ifft2(mask_ft * f)) for f in dK_ft])
-        probs[k] = np.clip(p, 0.0, None)
+    def accumulate(p, g):
         good = p > floor
         w = np.where(good, 1.0 / np.where(good, p, 1.0), 0.0)
         # info += (1/p) * outer(g, g), accumulated in place over scores
-        info += w[:, :, None, None] * (g.transpose(1, 2, 0)[:, :, :, None]
-                                       * g.transpose(1, 2, 0)[:, :, None, :])
+        info[...] += w[:, :, None, None] * (g.transpose(1, 2, 0)[:, :, :, None]
+                                            * g.transpose(1, 2, 0)[:, :, None, :])
+
+    # The masks tile the array, so what the scores do not account for is the mass
+    # that left it -- and how much that is depends on where the dart was aimed,
+    # not only on the kernel. So score 0 is held back until the rest are summed.
+    zero_k = int(np.flatnonzero(allowed == 0)[0]) if pad else -1
+    sum_p = np.zeros((n, n))
+    sum_g = np.zeros((npar, n, n))
+    held = None
+
+    for k, s in enumerate(allowed):
+        mask_ft = np.fft.fft2((board == s).astype(np.float64), s=(m, m))
+        p = np.real(np.fft.ifft2(mask_ft * K_ft))[:n, :n]
+        g = np.stack([np.real(np.fft.ifft2(mask_ft * f))[:n, :n] for f in dK_ft])
+        if k == zero_k:
+            held = True
+            continue
+        probs[k] = np.clip(p, 0.0, None)
+        sum_p += p
+        sum_g += g
+        accumulate(p, g)
+
+    if held is not None:
+        # Everything the other scores did not claim is a dart that scored
+        # nothing -- whether it landed on the board's black, on the wire, or on
+        # the floor behind the oche. So P(0) is one minus the rest, and its
+        # derivative is minus the rest's, which is also what makes the
+        # probabilities sum to one and their derivatives to zero by
+        # construction.
+        p = 1.0 - sum_p
+        g = -sum_g
+        probs[zero_k] = np.clip(p, 0.0, None)
+        accumulate(p, g)
 
     return {"info": info, "probs": probs, "allowed_scores": allowed,
             "params": params, "Sigma_mm": Sigma_mm, "mm_per_pixel": mm_px,
-            "board": board}
+            "board": board, "nu": nu}
 
 
 def information_at_points(maps, points):
