@@ -1,6 +1,6 @@
 # The experiments
 
-Twenty-one notebooks, in six phases. Each phase exists because the previous one
+Twenty-two notebooks, in six phases. Each phase exists because the previous one
 exposed a gap, so they read best in order — but every notebook states its own
 question and answers it, and the verdict sections are self-contained.
 
@@ -15,7 +15,8 @@ finds that about half of what 19 measured is the *aim* moving between darts,
 which the solver has no state for at all. 21 finds a **data defect** underneath
 20's other conclusion, and that once it is removed a dart is a **Student-t**
 rather than a Gaussian — and that most of the dependence 19 and 20 were chasing
-was one dart being described badly.
+was one dart being described badly. **22 acts on it**: it solves 501 with the
+Student-t and reports which of the project's answers move.
 
 All notebooks run on a **512-pixel board** with a **3.52 mm aiming grid**
 (`point_stride=4`). Notebook 02 is where that choice is justified: an 8 mm
@@ -83,6 +84,7 @@ then the model starts growing.
 | **19** What real darts says | 300,985 professional darts. Three predictions, tested | **Doubles: flat survives** (p = 0.35, with 80% power against a 5-point spread) — but the sixteen players disagree with each other in both directions (I² = 47%), which is a shape signal, not noise. **Visit totals: right at the extremes, wrong in the middle** — no `σ` reproduces the 180 rate and P(exactly 60) at once. **Independence: refuted.** Hitting T20 lifts the next dart's chance by **18–22 points** (z > 35). Not player pooling (34 of 35 individuals), not form drift (the lift is *negative* across the gap between visits), not the filter — but about half of it turns out to be the *aim* moving, which none of those three checks could catch. See 20 |
 | **20** What couples the darts | 19 says the darts are not independent. What replaces the assumption? | **Mostly not the throw.** Professionals use **four** scoring targets and step down them after a miss — from the 20 a miss moves to the 19 24.8% of the time, from the 19 to the 18 35.7%. That is about half of what 19 measured, it replicates across both feeds, and it costs them nothing (**−0.45 ± 0.47** points) because the 19's neighbours pay more than the 20's. The model has no *state* for it. **Its second conclusion — that a dart's tails are too thin for a Gaussian — is superseded by 21**, which found the tail was a data defect and the fix a different distribution rather than a wider one |
 | **21** Is a throw Gaussian? | A mixture patched the tail. Is that what a throw *is*? | **No, and the tail was not a throw.** The 2017 feed leaks the previous leg's checkout darts into the next leg's opening visit — 6.7% of player-legs against 0.13% in the clean feed — and that visit is **78%** of the pure-scoring sample. 100% of the double 20s sat at exactly one score. Cleaned, the Gaussian still loses to five of six candidates for **all 17 players**, and the winner is a **Student-t, `ν ≈ 2.25`**, beating a two-component mixture with **one** parameter against two. The rival explanation — an elliptical group — was priced identically, shown to be detectable on simulated data, and gains **nothing** (−0.02). Two knock-ons: the per-visit coupling 20 selected is worth **+0.002** on top of a Student-t against +0.51 on a Gaussian, and `σ` is not a standard deviation — the familiar 6.5 mm is a heavy-tailed **core scale** |
+| **22** What changes if the dart is Student-t? | 21 says a dart is a t. Solve 501 with one and see what moves | **The scoring phase does not care; the checkout phase does.** Matched on the three-dart average — the thing the ability bands already mean, and not on σ or on variance, which give a "pro" who averages 147 — the T20/T19 crossover moves from 16.80 mm to 16.5–16.9, five of seven bands aim at the same pixel, and **the whole difference in the leg sits below 170**. The sign depends on who throws: elite and pro finish **0.11 darts sooner**, the middle bands 0.12–0.23 later, a pub player **1.61 sooner**. The mechanism is measured, not assumed — a matched t is up to 15% better at an 8 mm bed and 2–12% worse at a whole sector. Sharpest consequence: with **50 left and one dart, a Gaussian pro sets up for 32 and a t pro throws at the bull** |
 
 ---
 
@@ -107,6 +109,7 @@ machine, so those are upper bounds.
 | 12 | The shape of a throw | 6 m 56 ◦ |
 | 08 | What is practice worth? | 8 m 19 |
 | 03 | Did the geometry fixes change anything? | 8 m 33 |
+| 22 | What changes if the dart is Student-t? | 3 m 04 |
 | 21 | Is a throw Gaussian? | 11 m 14 |
 | 15 | Fast enough to play with | 15 m 16 |
 | 20 | What couples the darts | 22 m 24 |
@@ -115,7 +118,7 @@ machine, so those are upper bounds.
 | 13 | Aiming off | 69 m |
 | 17 | Measuring all of it | **3 h 25** ◦ |
 
-**Total ≈ 8 h 17.**
+**Total ≈ 8 h 20.**
 
 Notebook 19 is six seconds because all the work is upstream: it reads the files
 `scripts/build_real_data.py` produces. That build is not in the total — it
@@ -151,7 +154,7 @@ theorem.
 most of the above. 13, 14, 16 and 17 were all considerably quicker on the coarser
 board, and considerably less trustworthy.
 
-### The scripts behind 09, 17, 20 and 21
+### The scripts behind 09, 17, 20, 21 and 22
 
 These are not in the notebook times. Their outputs are committed under
 `results/`, so the notebooks re-run without re-solving.
@@ -168,8 +171,9 @@ These are not in the notebook times. Their outputs are committed under
 | `calibration_recovery.py` | 16 m | `calibration/recovery.csv` |
 | `dependence_fits.py` | 47 m | `dependence/fits.csv`, `dependence/signatures.csv` |
 | `throw_family_fits.py` | 1 h 06 | `throw_family/fits.csv` |
+| `solve_single_player.py --nu 2.25 3 5` | 15 m | `manifest_student_t.csv`, `student_t/{band}_nu{nu}_{obj}.npz` |
 
-**Total ≈ 9 h 49**, so a full rebuild from nothing is about **18 hours**.
+**Total ≈ 10 h 04**, so a full rebuild from nothing is about **18 hours**.
 
 Run the design scripts in the order listed above: the two-stage study needs the
 lookup table and the robust design, and the simulation study needs the per-band

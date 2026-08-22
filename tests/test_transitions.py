@@ -276,3 +276,55 @@ def test_matched_scale_is_monotone_in_ability():
 def test_student_t_kernel_rejects_a_non_positive_nu():
     with pytest.raises(ValueError):
         student_t_kernel(32, np.eye(2), 0.0)
+
+
+def test_a_matched_t_is_better_at_beds_and_worse_at_sectors():
+    """
+    Notebook 22's mechanism, restated. Matched on the three-dart average, a t has
+    a tighter core and a few darts that go anywhere, so it must beat the Gaussian
+    on an 8mm bed and lose to it on a whole sector. Every conclusion in that
+    notebook about which bands the t helps is downstream of those two signs.
+
+    The treble is the clean case and is strictly better at every ability. The
+    double is not, and the notebook says so: at the middle abilities the t's
+    advantage there is 1.002, which is a tie the grid cannot resolve. So the
+    double is asserted as "not worse", and strictly better only at the two ends
+    where the effect is real. (256 pixels here, against the notebook's 512, so
+    the numbers differ in the third place -- the signs are the claim.)
+    """
+    board, _ = generate_dartboard(256)
+    d20 = {}
+    for sigma in (8.0, 16.0, 28.0):
+        g = transition_arrays(256, sigma, point_stride=4)
+        t = transition_arrays(256, matched_scale(sigma, 2.25, board=board),
+                              point_stride=4, nu=2.25)
+        sc = g['allowed_scores']
+        i40, i60 = list(sc).index(40), list(sc).index(60)
+        d20[sigma] = (g['checkout_probs'][:, i40].max(),
+                      t['checkout_probs'][:, i40].max())
+        assert d20[sigma][1] > 0.99 * d20[sigma][0]
+        assert t['probs'][:, i60].max() > g['probs'][:, i60].max()
+        # and the other way on a target a whole sector satisfies
+        sector = lambda tr: tr['probs'][:, sc >= 20].sum(1).max()
+        assert sector(t) < sector(g)
+    for sigma in (8.0, 28.0):
+        assert d20[sigma][1] > d20[sigma][0]
+
+
+def test_a_matched_t_misses_the_board_at_about_the_observed_rate():
+    """
+    Nothing in the matching uses the off-board rate -- the scale is chosen to
+    reproduce a three-dart average -- so what the t predicts there is a free
+    check. Cleaned professional darts miss on 0.32% of pure-scoring throws
+    (0.012% on the first dart of a visit, 0.60% on the third). A Gaussian says
+    3e-17, which is not a near miss.
+    """
+    board, _ = generate_dartboard(256)
+    g = transition_arrays(256, 8.0, point_stride=4)
+    t = transition_arrays(256, matched_scale(8.0, 2.25, board=board),
+                          point_stride=4, nu=2.25)
+    sc = g['allowed_scores']
+    zero = list(sc).index(0)
+    at_best = lambda tr: tr['probs'][(tr['probs'] @ sc).argmax(), zero]
+    assert at_best(g) < 1e-10
+    assert 1e-3 < at_best(t) < 2e-2

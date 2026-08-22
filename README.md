@@ -7,8 +7,10 @@ process, for a throw measured from a real player rather than assumed.
 
 ## What is here
 
-A dart is modelled as a Gaussian landing point, `Z ~ N(t + b, Σ)`, around
-wherever the player aimed. Given that, three questions have exact answers:
+A dart is modelled as a landing point around wherever the player aimed —
+`Z ~ N(t + b, Σ)`, or, since notebook 21 measured real throws and found the
+Gaussian beaten by every alternative tried, a **Student-t** of the same core.
+Given either, three questions have exact answers:
 
 * **Where should you aim?** Solve the leg as an MDP over `(score, dart in visit,
   score the visit started on)`, minimising **visits** rather than darts, which is
@@ -43,7 +45,7 @@ pip install -r requirements.txt
 pytest -q                        # ~5 minutes
 ```
 
-Then read `notebooks/experiments/README.md`, which maps the twenty
+Then read `notebooks/experiments/README.md`, which maps the twenty-two
 experiments, states what each one found, and lists what everything costs to
 re-run.
 
@@ -81,6 +83,18 @@ familiar "elite ≈ 6.5 mm" is the **core scale** of a heavy-tailed throw (media
 5.98 mm across professionals), not a standard deviation; fitting a Gaussian
 instead returns 11.47 mm, a compromise between core and tail that describes
 neither.
+
+**Solving with the Student-t moves the checkout phase and nothing else.**
+Notebook 22 puts the t into the transition builder — the only place in the
+project that knows what a throw is — and re-solves. Matched on the three-dart
+average, which is what the ability bands mean, the treble 20 / treble 19
+crossover barely moves (16.80 mm → 16.5–16.9) and five of seven bands aim at the
+same pixel, but the whole leg-length difference sits below 170. Its sign depends
+on the player: elite and pro finish 0.11 darts sooner as a t, the middle bands
+0.12–0.23 later, a pub player 1.61 sooner — because a t is better at an 8 mm bed
+and worse at a whole sector, and legs at different standards are made of those in
+different proportions. With 50 left and one dart, a Gaussian pro sets up for 32
+and a Student-t pro throws at the bull.
 
 **And check the data before you trust a tail.** Notebook 21 exists because
 notebook 20 reached the opposite conclusion from the same question. The 2017 feed
