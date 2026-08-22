@@ -6,14 +6,14 @@ be fitted at all. This script asks whether that patch is the right description o
 a throw, or merely the first thing that worked, by fitting a family of candidates
 on equal terms.
 
-The design is a two-by-three: the shape of **one dart's** distribution crossed
-with whether the visit shares a scale.
+The design crosses the shape of **one dart's** distribution with whether the
+visit shares a scale.
 
-                       per-dart family
-                   gaussian   exp-power   student-t   two-component
-  per-visit scale
-    none               .           .           .            .
-    shared             .                       .
+                              per-dart family
+              gaussian  elliptical  exp-power  student-t  core+uniform  two-comp
+  per-visit
+    none         .          .           .          .           .           .
+    shared       .                                 .
 
 The two axes are the same mechanism at different timescales, which is the point.
 A Student-t *is* a Gaussian whose width is redrawn -- for every dart. Notebook
@@ -21,10 +21,15 @@ A Student-t *is* a Gaussian whose width is redrawn -- for every dart. Notebook
 both, and both together, asks where the extra spread actually lives: in the dart,
 in the visit, or in each separately.
 
+``elliptical`` is the odd one out: it is not a tail at all but the rival
+explanation of the same excess, priced at the same one parameter, so that "the
+tail is heavy" has something to beat.
+
 Fits are per player on a training split of whole legs and scored on the held-out
 rest, exactly as ``dependence_fits.py`` does, so the numbers are comparable with
 notebook 20's. Everything else -- the four-target aim rule, the sideways-only
-bias, the isotropy -- is held fixed.
+bias -- is held fixed. Isotropy is held fixed for every model *except* the
+elliptical one, which exists to test it.
 
 Writes ``results/throw_family/fits.csv``. Needs the real data; see
 ``data/real/README.md``.

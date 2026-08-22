@@ -9,8 +9,10 @@ and an unconvincing one -- the wide component's width was unidentified for seven
 of nineteen players, running off wider than the board itself, which is what an
 over-flexible model looks like when the data cannot pin it down.
 
-So the question is what a dart's landing point actually is. This module holds
-four candidate families and the machinery to compare them on equal terms.
+That patch also turned out to be fitting a data defect -- see :mod:`darts.real_data`
+and notebook 21 -- but the question survives it: what *is* a dart's landing
+point? This module holds six candidate families and the machinery to compare
+them on equal terms.
 
 Every candidate here is an **isotropic radial density**: the landing point is the
 aim plus a displacement whose direction is uniform and whose length has some
@@ -27,17 +29,36 @@ they are deliberately ordered by that:
   exponential. It is exactly a Gaussian whose width is redrawn for every dart,
   which is a physically sensible thing for a throw to be: the player's precision
   is not identical from dart to dart.
+* :class:`CoreUniform` -- a Gaussian core plus a flat background over the board.
+  One parameter, and the right shape if the excess is *contamination* -- darts
+  that are not really throws at the target -- rather than a graded tail.
 * :class:`TwoComponent` -- the mixture notebook 20 used, kept as the reference to
   beat rather than as a candidate. Two extra parameters.
 
-All four nest the Gaussian -- at ``beta = 2``, at ``nu -> infinity``, at
-``eps = 0`` -- so a comparison between them is a question about whether the extra
-flexibility is used, not about which curve happens to fit.
+One candidate is not about tails at all:
+
+* :class:`EllipticalGaussian` -- a Gaussian group taller than it is wide. This is
+  the **rival hypothesis**, not another option. An isotropic fit to an elongated
+  group must account for the extra reach along the long axis somehow, and with
+  only a scale to play with the one way left is a fatter tail -- so it predicts
+  the same sort of excess for the same single parameter. Pricing them alike is
+  what makes the comparison mean anything.
+
+All six nest the Gaussian -- at ``beta = 2``, at ``nu -> infinity``, at
+``eps = 0``, at ``ratio = 1`` -- so a comparison between them is a question about
+whether the extra flexibility is used, not about which curve happens to fit.
 
 Each family is parameterised by a scale of its own, because there is no
-parameterisation in which one number means the same thing for all four. What is
+parameterisation in which one number means the same thing for all six. What is
 comparable is the **implied standard deviation per axis**, which every family
 reports, and which is what the rest of the project means by ``sigma``.
+
+A warning about that number, from what the fits actually returned. The winning
+Student-t sits at ``nu`` around 2.25, and below ``nu = 2`` a bivariate t has no
+variance at all. So ``axis_sd`` exists but is not a useful summary of a real
+throw -- the fitted *core scale* is (median 5.98 mm across professionals, against
+11.47 mm for a Gaussian fitted to the same darts, which splits the difference
+between core and tail and describes neither).
 """
 
 import numpy as np

@@ -19,9 +19,43 @@ on every run. `--verify-only` re-checks without rebuilding. Build time is ~1 min
 
 ## What reads it
 
-`notebooks/experiments/19-what-real-darts-says.ipynb` (six seconds, once the data
-exists) and `tests/test_real_data.py`, which restates that notebook's findings as
-assertions and **skips** cleanly on a clone that has not run the build.
+Notebooks 19, 20 and 21, and `tests/test_real_data.py` and
+`tests/test_throw_families.py`, which restate their findings as assertions and
+**skip** cleanly on a clone that has not run the build. Everything goes through
+`darts.real_data` — one loader and one cleaning rule, rather than one per
+notebook. See the defect note below for why that matters.
+
+## Known defect: the 2017 feed's leg boundaries — **read before using per-dart data**
+
+`dartsviz_pdc_2017` carries the previous leg's finishing darts into the next leg's
+opening visit. **6.7% of its player-legs begin with a dart that is a double or a
+miss**, against **0.13%** in the 2022 feed. A leg starts on 501, where no checkout
+is in reach, so a first dart should essentially never be a double — and the values
+of the offending darts give it away: 0, 40, 32, 28, 26, 36, which are missed
+doubles and the doubles 20, 16, 14, 13 and 18.
+
+Use `darts.real_data.scoring_visits()`, which drops those player-legs, rather than
+filtering `per_dart.csv` yourself. `contamination_report()` quantifies the defect
+and what the rule costs.
+
+**Why it matters more than 6.7% sounds.** Any analysis of the pure scoring phase
+filters to visits with a high remaining score, and those sit near the start of a
+leg by construction — so the contaminated opening visit was **78%** of that sample.
+Within it, **100% of the double 20s and 99.5% of the misses occurred at exactly
+`score_before == 501`**; at any other score they were absent. Notebooks 19 and 20
+each wrote their own filter inline, both inherited this, and notebook 20 read the
+result as a throw with tails far too heavy for a Gaussian. Cleaned, the double-20
+rate on first darts goes from 1.03% to 0.00% and the two feeds agree.
+
+The rule is blunt: it also drops the ~0.1% of legs that genuinely open with a
+wayward dart, so it biases the far tail very slightly **down**.
+
+**None of the six build gates caught this.** They check each dart against its own
+recorded score, and every dart here is internally consistent — 42 mismatches in
+300,822 — while the leg boundaries are wrong. Internal consistency is not
+correctness. `tests/test_throw_families.py` asserts the defect's signature
+directly, so a rebuild cannot quietly reintroduce it; if that test starts failing
+because the upstream was fixed, that is good news and the cleaning can be relaxed.
 
 ## What is here
 
