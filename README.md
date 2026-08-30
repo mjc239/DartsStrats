@@ -45,7 +45,7 @@ pip install -r requirements.txt
 pytest -q                        # ~5 minutes
 ```
 
-Then read `notebooks/experiments/README.md`, which maps the twenty-four
+Then read `notebooks/experiments/README.md`, which maps the twenty-six
 experiments, states what each one found, and lists what everything costs to
 re-run.
 
@@ -120,6 +120,23 @@ normal-inverse-Gaussian was fitted — heavy-tailed with every moment finite. It
 beats every other bounded-moment candidate, and still loses to the t, *worst of
 all on the five players it was built to rescue*. The `ν = 2` boundary is the data
 talking.
+
+**A player's lean is real, centred on nothing, and barely measurable.** Notebook
+16 established that a tilted group matters — 0.61 visits a leg between the best
+and worst orientation of the same ellipse — but it was simulated and left the
+prior on `ρ` an admitted guess. Notebook 25 measures seventeen real ones. There is
+**no population lean** (`μ = −0.011 ± 0.039`), so the prior was centred right; but
+it was about twice too wide, and should be `N(0, 0.14)` rather than `N(0, 0.3)`.
+Individually a player's `ρ` has a split-half reliability of **0.45** — the
+extremes replicate, the middle reverses outright — because competition darts are
+thrown at the treble 20, and notebook 16's "93 darts" figure was for the bull,
+where every segment boundary meets.
+
+**And fitting every player separately was the right call.** Notebook 26 tries the
+alternative. On two independent splits, no variant of partial pooling beats
+fitting each player alone, and treating all seventeen professionals as one throw
+model costs 0.067 a visit — a tenth of the entire Gaussian-to-Student-t gain. The
+ability bands are a useful summary, not a player.
 
 **And check the data before you trust a tail.** Notebook 21 exists because
 notebook 20 reached the opposite conclusion from the same question. The 2017 feed

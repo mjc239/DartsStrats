@@ -27,6 +27,7 @@ also lists what everything costs to re-run.
 | What couples a visit's darts (`darts/dependence.py`) | aim rule + throw coupling, fitted per player (notebook 20) | quadrature over the visit latent; seconds a player |
 | The shape of one dart (`darts/throw_families.py`) | eight families compared held-out; **a dart is Student-t, `ν ≈ 2.25`** (notebook 21), and survives an elliptical core and a bounded-moment rival (notebook 24) | whole-board integral, ~4 ms an evaluation |
 | Real match data (`darts/real_data.py`) | one loader, one cleaning rule, contamination report | seconds |
+| Pooling across players (`darts/hierarchical.py`) | observed information with a step check, REML, shrinkage, and the multivariate version (notebook 26) | a 7x7 Hessian is ~100 likelihood evaluations, seconds a player |
 | Throwing the dart the data says (`darts/transitions.py`) | Student-t kernel, matched on the three-dart average, solved at every band (notebook 22) | zero-padded FFT, ~4x the Gaussian; 15 min for three `nu` at seven bands |
 | Fitting and measuring one (`darts/fitting.py`, `darts/design.py`) | scale-mixture EM with `nu` profiled; the t score function for the Fisher information (notebook 23) | one extra weight on the same pixel sum; seconds a fit |
 
@@ -202,6 +203,36 @@ and the Gaussian by 3,730 log units, and loses to the t by 133 — *worst of all
 the five players it was built for*. So `ν → 2` is not a parameterisation artefact
 to engineer around: real darts want a tail that is **polynomial**, heavy enough
 that the variance may genuinely not exist.
+
+**A player's lean, measured at last (notebook 25).** Notebook 16 gave the throw a
+tilt, found it worth 0.61 visits a leg between the best and worst orientation of
+an identical ellipse, and ended by saying its prior on `ρ` was a guess and nobody
+knew what real players looked like. Seventeen professionals now do. There is **no
+population lean** — `μ(e₂) = −0.011 ± 0.039` — so the prior was centred right, but
+its width of 0.3 should be about **0.14** once the noise in the estimates is
+subtracted, which roughly doubles how hard a short session gets shrunk.
+Individually a lean is barely measurable: split-half reliability **0.45** on
+disjoint halves of a player's own legs, 0.62 for a whole record, and a 95%
+interval about ±0.25 wide. Notebook 16's "93 darts" was for the *bull*, where
+every segment boundary meets; competition darts are thrown at the treble 20, and
+the factor is roughly twenty. Players differ in elongation (`I²` 0.81) but not
+detectably in lean (`I²` 0.36, p = 0.079) — which refines notebook 24, whose
+"the ratios scatter, so it is noise" conflated no population *mean* with no
+*variation*. Only the first is true.
+
+**Fitting players independently is the right choice, and now it is checked
+(notebook 26).** On two independent splits no variant of partial pooling beats no
+pooling, and complete pooling loses by 365 log units — 0.067 a visit, a tenth of
+the entire Gaussian-to-Student-t gain. Players differ too much (`I²` 0.53–0.95 on
+6 of 7 parameters) and are measured too well for shrinkage to add anything. Two
+things fell out that generalise beyond this project: coordinate-wise shrinkage
+failed *worst on the players with the least data*, backwards from everything
+shrinkage is for, because the parameters correlate strongly across players (core
+scale against elongation, −0.745) and pulling each toward its own mean drags the
+vector off the ridge; and the one positive variant was selected by reading the
+held-out score across five candidates and did not replicate, which is a reminder
+that held-out likelihood is no defence against overfitting if it is used to pick
+the model.
 
 **A dart is Student-t, not Gaussian.** Notebook 21 fitted six candidate
 distributions per player on held-out legs. The Gaussian loses to five of them for
