@@ -373,9 +373,137 @@ class EllipticalGaussian(RadialFamily):
         return abs(self._ratio(shape) - 1.0) < tol
 
 
+class EllipticalStudentT(RadialFamily):
+    """
+    A Student-t group that is taller than it is wide.
+
+    Notebook 21 priced "the group is an ellipse" against "the tail is heavy" and
+    the ellipse gained nothing (-0.02 a visit). But it tested the ellipse with a
+    **Gaussian** core, and a Gaussian core fitted to heavy-tailed darts does not
+    merely come out too wide -- it comes out the wrong *shape*. On a simulated
+    2.11:1 elongated t it returns 2.81:1, and an off-diagonal five times too
+    large. So a null result measured that way is not safe, and the two extra
+    parameters have to be offered together before "no ellipse" means anything.
+
+    ``squared_radius`` is :class:`EllipticalGaussian`'s and ``profile`` is
+    :class:`StudentT`'s. That composes because the base class keeps the metric
+    and the radial shape apart, which is the whole reason they are separate
+    methods.
+    """
+
+    name = "elliptical-t"
+    shape_names = ("log_nu_minus_2", "log_ratio")
+
+    def _nu(self, shape):
+        return 2.0 + np.exp(np.clip(shape[0], -30.0, 30.0))
+
+    def _ratio(self, shape):
+        return float(np.exp(np.clip(shape[1], -2.0, 2.0)))
+
+    def squared_radius(self, dx, dy, shape):
+        # dy runs radially at the treble 20, dx tangentially -- the same axes
+        # EllipticalGaussian uses, so the fitted ratios are comparable
+        return dx * dx + (dy / self._ratio(shape)) ** 2
+
+    def area_scale(self, shape):
+        return self._ratio(shape)
+
+    def profile(self, r2, scale, shape):
+        nu = self._nu(shape)
+        return (1.0 + r2 / (nu * scale ** 2)) ** (-(nu + 2.0) / 2.0)
+
+    def norm(self, scale, shape):
+        return 2.0 * np.pi * scale ** 2
+
+    def axis_sd(self, scale, shape):
+        nu = self._nu(shape)
+        # geometric mean across the axes, as EllipticalGaussian reports
+        return float(scale * np.sqrt(self._ratio(shape)) * np.sqrt(nu / (nu - 2.0)))
+
+    def start_shape(self):
+        return np.array([np.log(6.0), 0.0])
+
+    def describe(self, shape):
+        return {"nu": float(self._nu(shape)), "ratio": self._ratio(shape)}
+
+    def is_gaussian(self, shape, tol=1e-3):
+        return self._nu(shape) > 1.0 / tol and abs(self._ratio(shape) - 1.0) < tol
+
+
+class NormalInverseGaussian(RadialFamily):
+    """
+    A Gaussian whose width is redrawn from an **inverse Gaussian** each dart.
+
+    The Student-t is the same idea with an inverse-*gamma* mixing law, and that
+    choice is what gives it polynomial tails and a variance that only exists
+    above ``nu = 2``. Five of the seventeen professionals notebook 21 fitted sat
+    exactly on that boundary, which says the likelihood wanted a heavier tail
+    than a finite variance permits. That is a statement about the parameterisation
+    rather than about darts players, and this family is the reply to it.
+
+    Writing ``Z = sqrt(W) * scale * G`` with ``W ~ InverseGaussian(mean 1, shape
+    kappa)`` and ``q = r^2 / scale^2``, ``s = sqrt(kappa (q + kappa))``:
+
+        profile(q) = (1 + 1/s) exp(kappa - s) / (q + kappa)
+
+    Three things follow, and they are the reasons to prefer it as the bounded
+    candidate:
+
+    * **Every moment is finite.** The tail decays like ``exp(-sqrt(kappa) r)``
+      rather than as a power of ``r``, so there is no ``nu = 2`` cliff to sit on
+      and no need to clip anything to keep a variance.
+    * **``scale`` is the per-axis standard deviation, exactly**, because ``W``
+      has mean 1 by construction. Nothing else here can say that: the t's scale
+      is a core and its SD is ``sqrt(nu/(nu-2))`` times larger when it exists at
+      all.
+    * **The core and the tail are no longer the same parameter.** A t has one
+      ``nu`` setting both how peaked the middle is and how far the tail reaches;
+      here the mixing law is free to be sharply peaked *and* long, which is what
+      the boundary-hitting players appear to be asking for.
+
+    ``kappa -> infinity`` is the Gaussian (the mixing law collapses onto 1), so it
+    nests like the others and the comparison stays a question about whether the
+    flexibility is used.
+    """
+
+    name = "nig"
+    shape_names = ("log_kappa",)
+
+    def _kappa(self, shape):
+        return float(np.exp(np.clip(shape[0], -8.0, 20.0)))
+
+    def profile(self, r2, scale, shape):
+        kappa = self._kappa(shape)
+        q = np.maximum(r2, 0.0) / scale ** 2
+        s = np.sqrt(kappa * (q + kappa))
+        # kappa - s is about -q/2 for large kappa, so this never underflows the
+        # way exp(-s) alone would
+        return (1.0 + 1.0 / s) * np.exp(kappa - s) / (q + kappa)
+
+    def norm(self, scale, shape):
+        # 2 pi scale^2 e^kappa (E1(kappa) + E2(kappa)/kappa), which collapses to
+        # this by E2(x) = e^-x - x E1(x). Checked against direct integration of
+        # the profile at kappa from 0.05 to 300.
+        return 2.0 * np.pi * scale ** 2 / self._kappa(shape)
+
+    def axis_sd(self, scale, shape):
+        # exact: the mixing law has mean 1, so Var = scale^2 whatever kappa is
+        return float(scale)
+
+    def start_shape(self):
+        return np.array([np.log(2.0)])
+
+    def describe(self, shape):
+        return {"kappa": self._kappa(shape)}
+
+    def is_gaussian(self, shape, tol=1e-3):
+        return self._kappa(shape) > 1.0 / tol
+
+
 FAMILIES = {f.name: f for f in (Gaussian(), ExponentialPower(), StudentT(),
                                 CoreUniform(), TwoComponent(),
-                                EllipticalGaussian())}
+                                EllipticalGaussian(), EllipticalStudentT(),
+                                NormalInverseGaussian())}
 
 
 class RadialBedGrid:
