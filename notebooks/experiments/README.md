@@ -1,6 +1,6 @@
 # The experiments
 
-Twenty-three notebooks, in six phases. Each phase exists because the previous one
+Twenty-four notebooks, in six phases. Each phase exists because the previous one
 exposed a gap, so they read best in order — but every notebook states its own
 question and answers it, and the verdict sections are self-contained.
 
@@ -18,7 +18,7 @@ rather than a Gaussian — and that most of the dependence 19 and 20 were chasin
 was one dart being described badly. **22 acts on it**: it solves 501 with the
 Student-t and reports which of the project's answers move. **23** does the same
 for the other half of the project -- fitting a player and designing the session
-that measures them.
+that measures them. **24** goes back and attacks 21's own result, twice.
 
 All notebooks run on a **512-pixel board** with a **3.52 mm aiming grid**
 (`point_stride=4`). Notebook 02 is where that choice is justified: an 8 mm
@@ -88,6 +88,7 @@ then the model starts growing.
 | **21** Is a throw Gaussian? | A mixture patched the tail. Is that what a throw *is*? | **No, and the tail was not a throw.** The 2017 feed leaks the previous leg's checkout darts into the next leg's opening visit — 6.7% of player-legs against 0.13% in the clean feed — and that visit is **78%** of the pure-scoring sample. 100% of the double 20s sat at exactly one score. Cleaned, the Gaussian still loses to five of six candidates for **all 17 players**, and the winner is a **Student-t, `ν ≈ 2.25`**, beating a two-component mixture with **one** parameter against two. The rival explanation — an elliptical group — was priced identically, shown to be detectable on simulated data, and gains **nothing** (−0.02). Two knock-ons: the per-visit coupling 20 selected is worth **+0.002** on top of a Student-t against +0.51 on a Gaussian, and `σ` is not a standard deviation — the familiar 6.5 mm is a heavy-tailed **core scale** |
 | **22** What changes if the dart is Student-t? | 21 says a dart is a t. Solve 501 with one and see what moves | **The scoring phase does not care; the checkout phase does.** Matched on the three-dart average — the thing the ability bands already mean, and not on σ or on variance, which give a "pro" who averages 147 — the T20/T19 crossover moves from 16.80 mm to 16.5–16.9, five of seven bands aim at the same pixel, and **the whole difference in the leg sits below 170**. The sign depends on who throws: elite and pro finish **0.11 darts sooner**, the middle bands 0.12–0.23 later, a pub player **1.61 sooner**. The mechanism is measured, not assumed — a matched t is up to 15% better at an 8 mm bed and 2–12% worse at a whole sector. Sharpest consequence: with **50 left and one dart, a Gaussian pro sets up for 32 and a t pro throws at the bull** |
 | **23** What does it cost to measure a Student-t player? | 22 taught the solvers to throw a t. Nothing could yet *estimate* one | **Fitting one costs a single weight; measuring one costs twice the darts.** A t is a Gaussian whose width is redrawn each throw, so the dart's width is a second latent and the E step gains `u = (ν+2)/(ν+q)` -- the M step is the same weighted Gaussian one, and the design side's score function is the Gaussian's times *the same* `u`. From 750 darts of an 8.0mm-core t the t fit returns 8.09mm and a Gaussian returns **12.45mm**. `ν` is profiled, not estimated: the profile separates a real tail (**+57** log-units) from none (**+0.75**) decisively but pins `ν` itself only loosely from scores. Where to throw survives -- bull, then big single, then treble ring -- but the bull stays optimal further out. How long does not: **233 darts to prove a millimetre becomes 506**, and a pub player's 4,857 becomes **23,634**. The roadmap asked which way heavy tails move the information; the answer is *less*, in every band. The normalisation `transitions.py` had to rebuild was worth only **0.2–5.2%** here, and in the safe direction — the score function was what mattered |
+| **24** What if the t is wrong? | Two objections to 21, tested rather than argued | **Both fail, and the second one usefully.** 21 priced "the group is an ellipse" against a heavy tail using a *Gaussian* core — and a Gaussian core reads a round heavy-tailed group as **1.15:1** and a real 1.60:1 group as **2.27:1**, so the null was measured with a broken instrument. Re-measured with an **elliptical Student-t** (which recovers 1.008 and 1.580) the answer does not move: **+0.0023 a visit, 11 wins from 17, p = 0.33**. Separately, **five of the seventeen players sit on the `ν = 2` clip**, so a **normal-inverse-Gaussian** was fitted — heavy-tailed with every moment finite, scale exactly the per-axis SD, core decoupled from tail. It beats exp-power 16–17 and the Gaussian by **3,730** log units, and still loses to the t by **133** — **worst of all on the five players it was built for**. Real darts want a tail that is *polynomial*, not merely heavy |
 
 ---
 
@@ -113,6 +114,7 @@ machine, so those are upper bounds.
 | 08 | What is practice worth? | 8 m 19 |
 | 03 | Did the geometry fixes change anything? | 8 m 33 |
 | 22 | What changes if the dart is Student-t? | 3 m 04 |
+| 24 | Two replies to notebook 21 | 5 m 07 |
 | 23 | Measuring a Student-t player | 13 m 22 |
 | 21 | Is a throw Gaussian? | 11 m 14 |
 | 15 | Fast enough to play with | 15 m 16 |
@@ -122,7 +124,7 @@ machine, so those are upper bounds.
 | 13 | Aiming off | 69 m |
 | 17 | Measuring all of it | **3 h 25** ◦ |
 
-**Total ≈ 8 h 34.**
+**Total ≈ 8 h 39.**
 
 Notebook 19 is six seconds because all the work is upstream: it reads the files
 `scripts/build_real_data.py` produces. That build is not in the total — it
@@ -175,9 +177,10 @@ These are not in the notebook times. Their outputs are committed under
 | `calibration_recovery.py` | 16 m | `calibration/recovery.csv` |
 | `dependence_fits.py` | 47 m | `dependence/fits.csv`, `dependence/signatures.csv` |
 | `throw_family_fits.py` | 1 h 06 | `throw_family/fits.csv` |
+| `throw_family_fits.py --models elliptical-t,nig` | 24 m | merges two candidates into the same file |
 | `solve_single_player.py --nu 2.25 3 5` | 15 m | `manifest_student_t.csv`, `student_t/{band}_nu{nu}_{obj}.npz` |
 
-**Total ≈ 10 h 04**, so a full rebuild from nothing is about **18 hours**.
+**Total ≈ 10 h 28**, so a full rebuild from nothing is about **18 hours**.
 
 Run the design scripts in the order listed above: the two-stage study needs the
 lookup table and the robust design, and the simulation study needs the per-band

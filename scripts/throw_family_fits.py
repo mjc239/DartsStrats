@@ -63,6 +63,11 @@ MODELS = [
     ("student-t", False),
     ("core+uniform", False),
     ("two-component", False),
+    # added after notebook 21, and both are replies to it: the ellipse it priced
+    # against a heavy tail was only ever tested with a Gaussian core, and five of
+    # its seventeen players sat on the nu > 2 boundary a finite variance imposes
+    ("elliptical-t", False),
+    ("nig", False),
     ("gaussian", True),
     ("student-t", True),
 ]

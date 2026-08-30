@@ -45,7 +45,7 @@ pip install -r requirements.txt
 pytest -q                        # ~5 minutes
 ```
 
-Then read `notebooks/experiments/README.md`, which maps the twenty-three
+Then read `notebooks/experiments/README.md`, which maps the twenty-four
 experiments, states what each one found, and lists what everything costs to
 re-run.
 
@@ -107,6 +107,19 @@ compromise (12.45mm for a thrower whose core is 8.0mm), and a heavy tail carries
 *less* information about the core than a Gaussian does. Where to throw to be
 measured survives; how long does not — **233 darts to prove a millimetre becomes
 506**, and a pub player's 4,857 becomes 23,634.
+
+**The tail is polynomial, not merely heavy — and that was tested, not assumed.**
+Notebook 24 goes back at notebook 21's result with its two best objections. The
+rival "the group is an ellipse" hypothesis had been priced using a *Gaussian*
+core, and a Gaussian core reads a perfectly round heavy-tailed group as 1.15:1
+elongated and a real 1.60:1 group as 2.27:1 — so that null was measured with a
+broken instrument. Re-measured with an elliptical Student-t, which recovers both
+correctly, the answer is unchanged: no ellipse. And since five of the seventeen
+players sit on the `ν = 2` clip that keeps a t's variance finite, a
+normal-inverse-Gaussian was fitted — heavy-tailed with every moment finite. It
+beats every other bounded-moment candidate, and still loses to the t, *worst of
+all on the five players it was built to rescue*. The `ν = 2` boundary is the data
+talking.
 
 **And check the data before you trust a tail.** Notebook 21 exists because
 notebook 20 reached the opposite conclusion from the same question. The 2017 feed

@@ -25,7 +25,7 @@ also lists what everything costs to re-run.
 | Measurement design (`darts/design.py`) | optimum found and certified, c- / D- / L-criteria | ~7 s for the information at every target |
 | Calibration against scores (`darts/calibration.py`) | machinery built and validated; **run against 300,985 real darts** (notebook 19) | exact visit likelihood, milliseconds |
 | What couples a visit's darts (`darts/dependence.py`) | aim rule + throw coupling, fitted per player (notebook 20) | quadrature over the visit latent; seconds a player |
-| The shape of one dart (`darts/throw_families.py`) | six families compared held-out; **a dart is Student-t, `ν ≈ 2.25`** (notebook 21) | whole-board integral, ~4 ms an evaluation |
+| The shape of one dart (`darts/throw_families.py`) | eight families compared held-out; **a dart is Student-t, `ν ≈ 2.25`** (notebook 21), and survives an elliptical core and a bounded-moment rival (notebook 24) | whole-board integral, ~4 ms an evaluation |
 | Real match data (`darts/real_data.py`) | one loader, one cleaning rule, contamination report | seconds |
 | Throwing the dart the data says (`darts/transitions.py`) | Student-t kernel, matched on the three-dart average, solved at every band (notebook 22) | zero-padded FFT, ~4x the Gaussian; 15 min for three `nu` at seven bands |
 | Fitting and measuring one (`darts/fitting.py`, `darts/design.py`) | scale-mixture EM with `nu` profiled; the t score function for the Fisher information (notebook 23) | one extra weight on the same pixel sum; seconds a fit |
@@ -188,6 +188,20 @@ This is not a missing parameter but a missing **state variable**. The solver's
 aim point is a function of the score and the dart index; there is nowhere to
 put "where did my last dart land". The current model gives essentially zero
 probability to a quarter of the darts thrown after the first of a visit.
+
+**Two ways it could have been wrong, both tested (notebook 24).** The elliptical
+rival in notebook 21 was priced with a *Gaussian* core, and a Gaussian core reads
+a round heavy-tailed group as 1.15:1 and a real 1.60:1 group as 2.27:1 — so an
+**elliptical Student-t** was fitted, which recovers 1.008 and 1.580 on the same
+simulations. The null holds: +0.0023 a visit, 11 wins from 17, `p = 0.33`. And
+because five of the seventeen players sit on the `ν = 2` clip that keeps a t's
+variance finite, a **normal-inverse-Gaussian** was fitted — a Gaussian scale
+mixture like the t, but with exponential rather than polynomial tails, so every
+moment exists and its scale is exactly the per-axis SD. It beats exp-power 16–17
+and the Gaussian by 3,730 log units, and loses to the t by 133 — *worst of all on
+the five players it was built for*. So `ν → 2` is not a parameterisation artefact
+to engineer around: real darts want a tail that is **polynomial**, heavy enough
+that the variance may genuinely not exist.
 
 **A dart is Student-t, not Gaussian.** Notebook 21 fitted six candidate
 distributions per player on held-out legs. The Gaussian loses to five of them for

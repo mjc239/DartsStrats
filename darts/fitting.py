@@ -589,9 +589,10 @@ def fit_multi_target(sessions, board_pixels=256, b_init=None, Sigma_init=None,
 
 
 #: Degrees of freedom to profile over. Spaced geometrically in ``nu - 2``,
-#: because that is what the likelihood is smooth in, and bracketing the 2.05-12
-#: range notebook 21 fitted across seventeen professionals. ``inf`` is the
-#: Gaussian and is included so the profile has its null in it.
+#: because that is what the likelihood is smooth in, and bracketing the 2.0-4.6
+#: range notebook 21 fitted across seventeen professionals -- five of whom sat on
+#: the nu > 2 boundary, so the grid runs down to 2.05 rather than stopping at the
+#: median. ``inf`` is the Gaussian and is included so the profile has its null.
 NU_GRID = (2.05, 2.1, 2.25, 2.5, 3.0, 4.0, 6.0, 10.0, 20.0, 50.0, np.inf)
 
 
