@@ -46,7 +46,8 @@ against both of the things it sits between: no pooling and complete pooling.
 import numpy as np
 
 
-def observed_information(log_likelihood, theta, rel_step=1e-3, min_step=1e-4):
+def observed_information(log_likelihood, theta, rel_step=1e-3, min_step=1e-4,
+                         free=None):
     """
     The Hessian of the negative log-likelihood at ``theta``, by central
     differences.
@@ -59,11 +60,26 @@ def observed_information(log_likelihood, theta, rel_step=1e-3, min_step=1e-4):
         log_likelihood (callable): maps a parameter vector to a log-likelihood.
         theta (array): where to evaluate, normally the maximum.
         rel_step, min_step (float): step is ``max(rel_step * |theta_i|, min_step)``.
+        free (sequence): indices to differentiate, the rest held fixed. Use this
+            when a parameter has run to a constraint: the likelihood is then flat
+            in its direction, its numerical curvature is noise, and it drags the
+            whole matrix down with it. Holding it where the constraint put it
+            gives the others an honest *conditional* standard error, which is
+            what they are.
 
     Returns:
-        np.ndarray: (k, k) observed information, symmetric.
+        np.ndarray: (k, k) observed information over the free coordinates,
+        symmetric.
     """
     theta = np.asarray(theta, float)
+    if free is not None:
+        free = np.asarray(free, int)
+        full = theta.copy()
+
+        def sub_ll(x):
+            full[free] = x
+            return log_likelihood(full)
+        return observed_information(sub_ll, theta[free], rel_step, min_step)
     k = len(theta)
     h = np.maximum(rel_step * np.abs(theta), min_step)
     f0 = log_likelihood(theta)
@@ -85,13 +101,19 @@ def observed_information(log_likelihood, theta, rel_step=1e-3, min_step=1e-4):
     return -0.5 * (H + H.T)          # information is minus the Hessian of logL
 
 
-def parameter_covariance(log_likelihood, theta, check_step=True):
+def parameter_covariance(log_likelihood, theta, check_step=True, free=None,
+                         rcond=1e-10):
     """
     Asymptotic covariance of the estimate, and whether it can be trusted.
 
-    Returns ``None`` for the covariance when the information matrix is not
-    positive definite, which is the honest answer when a parameter is not
+    Returns ``None`` for the covariance when the information matrix cannot be
+    inverted meaningfully, which is the honest answer when a parameter is not
     identified rather than a large standard error that looks like a measurement.
+
+    "Cannot be inverted meaningfully" is a condition-number test, not a sign
+    test. A matrix whose smallest eigenvalue is positive but a billionth of its
+    largest is positive definite and still numerically singular -- checking only
+    the sign let one through and it reached ``inv`` as a crash.
 
     Returns:
         dict: ``cov`` (k, k) or None, ``se`` (k,) or None, ``pd`` bool,
@@ -99,19 +121,27 @@ def parameter_covariance(log_likelihood, theta, check_step=True):
         when the finite-difference step is increased tenfold. Anything above a
         per cent means the curvature is being read off numerical noise.
     """
-    info = observed_information(log_likelihood, theta)
-    w = np.linalg.eigvalsh(info)
-    out = {"pd": bool(w.min() > 0), "step_sensitivity": np.nan}
-    if not out["pd"]:
+    def invert(matrix):
+        w = np.linalg.eigvalsh(matrix)
+        if w.min() <= 0 or w.min() < rcond * w.max():
+            return None
+        try:
+            return np.linalg.inv(matrix)
+        except np.linalg.LinAlgError:
+            return None
+
+    info = observed_information(log_likelihood, theta, free=free)
+    cov = invert(info)
+    out = {"pd": cov is not None, "step_sensitivity": np.nan}
+    if cov is None:
         out["cov"] = out["se"] = None
         return out
-    cov = np.linalg.inv(info)
-    out["cov"], out["se"] = cov, np.sqrt(np.diag(cov))
+    out["cov"], out["se"] = cov, np.sqrt(np.abs(np.diag(cov)))
     if check_step:
-        coarse = observed_information(log_likelihood, theta, rel_step=1e-2,
-                                     min_step=1e-3)
-        if np.linalg.eigvalsh(coarse).min() > 0:
-            se2 = np.sqrt(np.diag(np.linalg.inv(coarse)))
+        coarse = invert(observed_information(log_likelihood, theta, rel_step=1e-2,
+                                             min_step=1e-3, free=free))
+        if coarse is not None:
+            se2 = np.sqrt(np.abs(np.diag(coarse)))
             out["step_sensitivity"] = float(
                 np.max(np.abs(se2 - out["se"]) / np.maximum(out["se"], 1e-300)))
     return out
@@ -205,3 +235,61 @@ def delta_interval(fn, theta, cov, n_draw=20000, seed=0, quantiles=(2.5, 97.5)):
     return {"point": float(fn(np.asarray(theta, float))),
             "lo": float(lo), "hi": float(hi), "sd": float(vals.std(ddof=1)),
             "draws": vals}
+
+
+def random_effects_mv(estimates, covs, max_iter=2000, tol=1e-10, ridge=1e-10):
+    """
+    The same model with the parameters taken together rather than one at a time.
+
+    Shrinking each coordinate toward its own mean quietly assumes the parameters
+    are independent, and in this project they are conspicuously not: across
+    players the fitted core scale and ``log(nu - 2)`` correlate at +0.52, and the
+    core scale and the elongation at -0.74. A player who is above the population
+    mean on one is systematically above it on the others, so pulling each
+    coordinate toward its own average drags the whole vector *off* the ridge the
+    players actually lie on -- to a place no player is.
+
+        theta_hat_p ~ N(theta_p, V_p),      theta_p ~ N(mu, T)
+
+    with ``V_p`` the player's own covariance and ``T`` the population's, both
+    full matrices. Fitted by EM, which for this model is two lines:
+
+        posterior:  C_p = (V_p^-1 + T^-1)^-1,  m_p = C_p (V_p^-1 theta_hat_p + T^-1 mu)
+        update:     mu = mean(m_p),  T = mean(C_p + (m_p - mu)(m_p - mu)')
+
+    Whether the extra structure is worth its parameters is a real question -- a
+    7x7 ``T`` is 28 numbers from 17 players -- and is not settled here. It is
+    settled on held-out legs.
+
+    Args:
+        estimates (array): (n, k) per-unit estimates.
+        covs (array): (n, k, k) per-unit covariances.
+
+    Returns:
+        dict: ``mu`` (k,), ``T`` (k, k), ``posterior_mean`` (n, k), ``n_iter``.
+    """
+    est = np.asarray(estimates, float)
+    V = np.asarray(covs, float)
+    n, k = est.shape
+    eye = np.eye(k)
+    mu = est.mean(axis=0)
+    T = np.cov(est.T, bias=False) + ridge * eye
+
+    for it in range(max_iter):
+        Tinv = np.linalg.inv(T + ridge * eye)
+        m = np.empty_like(est)
+        C = np.empty_like(V)
+        for p in range(n):
+            Vinv = np.linalg.inv(V[p] + ridge * eye)
+            C[p] = np.linalg.inv(Vinv + Tinv)
+            m[p] = C[p] @ (Vinv @ est[p] + Tinv @ mu)
+        new_mu = m.mean(axis=0)
+        d = m - new_mu
+        new_T = (C.mean(axis=0)
+                 + np.einsum("pi,pj->ij", d, d) / n)
+        moved = max(float(np.abs(new_mu - mu).max()),
+                    float(np.abs(new_T - T).max()))
+        mu, T = new_mu, 0.5 * (new_T + new_T.T)
+        if moved <= tol:
+            break
+    return {"mu": mu, "T": T, "posterior_mean": m, "n_iter": it + 1}

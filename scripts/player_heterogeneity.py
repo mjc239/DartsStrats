@@ -94,24 +94,40 @@ def fit_one(job, pixels, seed):
     theta = res.x
     params = model.unpack(theta)
 
-    cov = parameter_covariance(lambda x: model.log_likelihood(x, b_tr, h_tr), theta)
+    ll = lambda x: model.log_likelihood(x, b_tr, h_tr)
+    cov = parameter_covariance(ll, theta)
+    # Players whose nu has run to the nu > 2 clip have a likelihood that is flat
+    # in that direction, so its numerical curvature is noise and it poisons the
+    # whole matrix -- the step-sensitivity check catches this at 4 to 9, against
+    # 5e-4 for everyone else. Hold nu where the constraint put it and the rest of
+    # the parameters have honest conditional standard errors.
+    conditional = (not cov["pd"]) or not (cov["step_sensitivity"] < 1e-2)
+    free = [i for i, n in enumerate(PARAMS) if n != "log_nu_minus_2"]
+    if conditional:
+        cov = parameter_covariance(ll, theta, free=free)
     row = {"source": source, "player": player,
            "n_train": len(b_tr), "n_test": len(b_te),
            "train_ll": -res.fun,
            "test_ll": model.log_likelihood(theta, b_te, h_te),
            "scale": params["scale"], "seconds": time.time() - t0,
            "information_pd": cov["pd"],
-           "step_sensitivity": cov["step_sensitivity"]}
+           "step_sensitivity": cov["step_sensitivity"],
+           "nu_held_fixed": conditional}
     row.update(family.describe(params["shape"]))
+    idx = {n: j for j, n in enumerate([PARAMS[i] for i in free])} if conditional \
+        else {n: j for j, n in enumerate(PARAMS)}
     for i, name in enumerate(PARAMS):
         row[name] = float(theta[i])
-        row[f"se_{name}"] = float(cov["se"][i]) if cov["pd"] else np.nan
+        row[f"se_{name}"] = (float(cov["se"][idx[name]])
+                             if cov["pd"] and name in idx else np.nan)
     row["_theta"] = theta
     row["_cov"] = cov["cov"]
+    row["_free"] = free if conditional else list(range(len(PARAMS)))
     row["_beds"] = (b_tr, h_tr, b_te, h_te)
     print(f"  {player[:20]:<20} rho {row['rho']:+.3f}  ratio {row['ratio']:.3f}  "
           f"tilt {row['tilt_deg']:5.1f}  nu {row['nu']:.2f}  "
-          f"pd {cov['pd']}  ({time.time() - t0:.0f}s)", flush=True)
+          f"pd {cov['pd']}{'  [nu held]' if conditional else ''}  "
+          f"({time.time() - t0:.0f}s)", flush=True)
     return row
 
 
@@ -163,8 +179,11 @@ def main():
         store[f"{i}_b_tr"], store[f"{i}_h_tr"] = b_tr, h_tr
         store[f"{i}_b_te"], store[f"{i}_h_te"] = b_te, h_te
         store[f"{i}_theta"] = r.pop("_theta")
-        cov = r.pop("_cov")
-        store[f"{i}_cov"] = cov if cov is not None else np.full((7, 7), np.nan)
+        cov, free_i = r.pop("_cov"), r.pop("_free")
+        full = np.full((len(PARAMS), len(PARAMS)), np.nan)
+        if cov is not None:
+            full[np.ix_(free_i, free_i)] = cov
+        store[f"{i}_cov"] = full
     np.savez_compressed(os.path.join(args.out, "visits.npz"), **store)
 
     df = pd.DataFrame(rows)

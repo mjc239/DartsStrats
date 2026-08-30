@@ -139,3 +139,79 @@ def test_an_interval_for_a_bounded_quantity_stays_in_bounds():
     # a linear function is where sampling and the delta method must agree
     lin = delta_interval(lambda e: 3 * e[0] - e[1], theta, cov, n_draw=40000, seed=2)
     assert lin["sd"] == pytest.approx(np.sqrt(9 * 0.09 + 0.09 - 2 * 3 * 0.01), rel=0.03)
+
+
+def test_the_multivariate_version_recovers_a_correlated_population():
+    """
+    The point of doing it jointly is the off-diagonal, so that is what has to be
+    recovered. Coordinate-wise shrinkage cannot see it at all.
+    """
+    from darts.hierarchical import random_effects_mv
+
+    rng = np.random.default_rng(3)
+    n, k = 200, 2
+    T_true = np.array([[0.40, 0.28], [0.28, 0.30]])       # correlation +0.81
+    mu_true = np.array([1.5, -0.5])
+    theta = rng.multivariate_normal(mu_true, T_true, n)
+    V = np.stack([np.diag(rng.uniform(0.02, 0.15, k)) for _ in range(n)])
+    est = np.stack([rng.multivariate_normal(theta[i], V[i]) for i in range(n)])
+
+    out = random_effects_mv(est, V)
+    assert out["mu"] == pytest.approx(mu_true, abs=0.1)
+    assert out["T"] == pytest.approx(T_true, abs=0.12)
+    r_true = T_true[0, 1] / np.sqrt(T_true[0, 0] * T_true[1, 1])
+    r_got = out["T"][0, 1] / np.sqrt(out["T"][0, 0] * out["T"][1, 1])
+    assert abs(r_got - r_true) < 0.1
+    # What it buys: lower error against the truth than the raw estimates.
+    #
+    # Note what it does *not* buy, because it is counterintuitive and an earlier
+    # version of this test asserted it. A coordinate of the posterior mean need
+    # not lie between its own estimate and its own population mean -- it does not
+    # for 109 of these 200 units. Correlated information from the other
+    # coordinates can push it the other way, and that is the whole point of
+    # doing it jointly rather than one at a time.
+    raw = np.mean((est - theta) ** 2)
+    shrunk_mse = np.mean((out["posterior_mean"] - theta) ** 2)
+    assert shrunk_mse < raw
+    between = np.abs(out["posterior_mean"] - out["mu"]) <= np.abs(est - out["mu"])
+    assert not between.all()
+
+
+def test_the_multivariate_version_agrees_with_the_scalar_one_when_uncorrelated():
+    """With a diagonal population and diagonal measurement error the two must
+    give the same shrinkage, or one of them is wrong."""
+    from darts.hierarchical import random_effects_mv
+
+    rng = np.random.default_rng(4)
+    n = 400
+    tau = np.array([0.5, 0.3])
+    mu_true = np.array([1.0, -1.0])
+    theta = mu_true + tau * rng.standard_normal((n, 2))
+    se = rng.uniform(0.1, 0.4, (n, 2))
+    est = theta + se * rng.standard_normal((n, 2))
+    V = np.stack([np.diag(se[i] ** 2) for i in range(n)])
+
+    mv = random_effects_mv(est, V)
+    for j in range(2):
+        uni = random_effects(est[:, j], se[:, j])
+        assert mv["mu"][j] == pytest.approx(uni["mu"], abs=0.05)
+        assert np.sqrt(mv["T"][j, j]) == pytest.approx(uni["tau"], abs=0.06)
+    assert abs(mv["T"][0, 1]) < 0.05
+
+
+def test_a_barely_positive_direction_is_refused_like_a_flat_one():
+    """
+    A sign test is not enough. An information matrix whose smallest eigenvalue is
+    positive but a billionth of its largest is positive definite and numerically
+    singular -- checking only the sign let one through on a second data split and
+    it reached `inv` as a crash rather than as a None.
+    """
+    mean = np.zeros(3)
+
+    def nearly_flat(theta):
+        d = np.asarray(theta, float)
+        return -0.5 * (1e6 * d[0] ** 2 + 1e6 * d[1] ** 2 + 1e-9 * d[2] ** 2)
+
+    out = parameter_covariance(nearly_flat, mean)
+    assert not out["pd"]
+    assert out["cov"] is None and out["se"] is None
