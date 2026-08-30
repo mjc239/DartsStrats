@@ -500,10 +500,103 @@ class NormalInverseGaussian(RadialFamily):
         return self._kappa(shape) > 1.0 / tol
 
 
+class TiltedStudentT(EllipticalStudentT):
+    """
+    A Student-t group elongated along an axis of its own choosing.
+
+    :class:`EllipticalStudentT` pins the ellipse to the board's vertical and
+    horizontal. That is not a neutral choice: an ellipse leaning 45 degrees has
+    equal marginal spreads, so an axis-aligned model reports it as perfectly
+    round however elongated it really is. Notebook 16 measured what that costs in
+    play -- 0.15 visits a leg in exactly that worst case, and 0.61 between the
+    best and worst orientation of an identical ellipse -- but notebook 16 was
+    simulated, and no real player's lean has ever been measured.
+
+    **The shape is carried as two numbers, not as a ratio and an angle.** Written
+    the obvious way, a round group has no angle: every tilt describes it equally
+    well, so the likelihood has a whole ridge of equivalent parameters and an
+    optimiser walks along it. Since the elongations actually fitted to real
+    players sit near 1, that ridge is where the fits live. Instead::
+
+        e1 = log(ratio) cos(2 tilt),    e2 = log(ratio) sin(2 tilt)
+
+    which is one point, the origin, for a round group. The doubling is what makes
+    it continuous: a tilt has period pi rather than 2 pi -- a group leaning 30
+    degrees and one leaning 210 are the same group -- so ``2 tilt`` is what goes
+    round once. Nothing is bounded and nothing is periodic, which also makes
+    these the right coordinates to average across players in.
+
+    What a fit is usually quoted as is ``rho``, the correlation of the scale
+    matrix, because that is what :mod:`darts.throw_shape` and the particle filter
+    carry and it means the same thing for a t as for a Gaussian. Note it is zero
+    in two different ways -- a round group, and an elongated group square to the
+    board -- so ``rho`` measures the *interaction* of elongation and lean, not
+    the lean alone.
+    """
+
+    name = "tilted-t"
+    shape_names = ("log_nu_minus_2", "e1", "e2")
+
+    def _ellipse(self, shape):
+        """(ratio, tilt) from the two shape coordinates."""
+        e1, e2 = float(shape[1]), float(shape[2])
+        log_ratio = np.hypot(e1, e2)
+        return float(np.exp(min(log_ratio, 2.0))), 0.5 * np.arctan2(e2, e1)
+
+    def _ratio(self, shape):
+        return self._ellipse(shape)[0]
+
+    def squared_radius(self, dx, dy, shape):
+        ratio, th = self._ellipse(shape)
+        c, s = np.cos(th), np.sin(th)
+        # tilt runs *clockwise* from the board's vertical, so that a positive
+        # tilt and a positive rho describe the same lean -- a group whose top
+        # leans to the right. The other sign convention is equally valid and
+        # makes the two disagree, which is a trap for anyone reading a results
+        # table.
+        u = c * dx - s * dy
+        v = s * dx + c * dy
+        return u * u + (v / ratio) ** 2
+
+    def area_scale(self, shape):
+        return self._ellipse(shape)[0]
+
+    def scale_matrix(self, scale, shape):
+        """The 2x2 scale matrix this metric corresponds to, in mm^2."""
+        ratio, th = self._ellipse(shape)
+        c, s = np.cos(th), np.sin(th)
+        # R D R', not R' D R: the metric maps z to (u, v) by R', so the scale
+        # matrix it corresponds to is R D R'. Getting this backwards leaves the
+        # diagonal untouched and flips the sign of the off-diagonal, which is to
+        # say it silently reverses which way every player leans.
+        R = np.array([[c, s], [-s, c]])
+        return scale ** 2 * R @ np.diag([1.0, ratio ** 2]) @ R.T
+
+    def rho(self, shape):
+        """The correlation, which is what the rest of the project calls a lean."""
+        S = self.scale_matrix(1.0, shape)
+        return float(S[0, 1] / np.sqrt(S[0, 0] * S[1, 1]))
+
+    def axis_sd(self, scale, shape):
+        nu = self._nu(shape)
+        return float(scale * np.sqrt(self._ratio(shape)) * np.sqrt(nu / (nu - 2.0)))
+
+    def start_shape(self):
+        return np.array([np.log(6.0), 0.0, 0.0])
+
+    def describe(self, shape):
+        ratio, th = self._ellipse(shape)
+        return {"nu": float(self._nu(shape)), "ratio": ratio,
+                "tilt_deg": float(np.degrees(th) % 180.0), "rho": self.rho(shape)}
+
+    def is_gaussian(self, shape, tol=1e-3):
+        return self._nu(shape) > 1.0 / tol and abs(self._ratio(shape) - 1.0) < tol
+
+
 FAMILIES = {f.name: f for f in (Gaussian(), ExponentialPower(), StudentT(),
                                 CoreUniform(), TwoComponent(),
                                 EllipticalGaussian(), EllipticalStudentT(),
-                                NormalInverseGaussian())}
+                                NormalInverseGaussian(), TiltedStudentT())}
 
 
 class RadialBedGrid:
