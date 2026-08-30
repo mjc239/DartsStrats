@@ -257,3 +257,94 @@ def test_the_fit_recovers_the_new_families(grid, name):
     else:
         assert abs(got['scale'] - 6.0) < 1.5
         assert abs(described['ratio'] - 1.6) < 0.5
+
+
+def test_a_tilted_t_that_is_square_to_the_board_is_the_elliptical_t(grid):
+    """
+    The tilt is an addition, not a replacement: at e2 = 0 the ellipse is square
+    to the board and the family has to reproduce the one it generalises.
+    """
+    tilt, ell = FAMILIES['tilted-t'], FAMILIES['elliptical-t']
+    # Only for ratio >= 1. Below it the two agree on the ellipse and disagree on
+    # which axis carries the scale, so `scale` means different things -- see the
+    # canonicalisation test below.
+    for log_nu, log_ratio in ((np.log(0.4), np.log(1.6)), (np.log(3.0), np.log(2.1))):
+        a = grid.bed_pmf(tilt, 20, np.zeros(2), 6.0,
+                         np.array([log_nu, log_ratio, 0.0]))
+        b = grid.bed_pmf(ell, 20, np.zeros(2), 6.0, np.array([log_nu, log_ratio]))
+        assert np.abs(a - b).max() < 1e-14
+
+
+def test_the_ellipse_coordinates_round_trip_and_have_no_degenerate_point(grid):
+    """
+    Carried as (log_ratio, tilt), a round group has no angle -- every tilt
+    describes it equally well, so the likelihood has a ridge of equivalent
+    parameters and an optimiser walks along it. Since the elongations fitted to
+    real players sit near 1, that ridge is where the fits live. In (e1, e2) a
+    round group is one point.
+    """
+    fam = FAMILIES['tilted-t']
+    for ratio, deg in ((1.6, 0.0), (1.6, 30.0), (1.6, 45.0), (1.6, 150.0),
+                       (2.4, 115.0)):
+        lr, th = np.log(ratio), np.radians(deg)
+        shape = np.array([np.log(0.4), lr * np.cos(2 * th), lr * np.sin(2 * th)])
+        got = fam.describe(shape)
+        assert got['ratio'] == pytest.approx(ratio, rel=1e-12)
+        assert got['tilt_deg'] == pytest.approx(deg % 180.0, abs=1e-9)
+    # one point, not a ridge
+    assert fam.describe(np.array([0.0, 0.0, 0.0]))['ratio'] == pytest.approx(1.0)
+    # and the coordinates are canonical: a group squashed by 0.7 along one axis
+    # is the same group stretched by 1/0.7 along the other, and comes back that
+    # way rather than as a second name for the same thing
+    lr, th = np.log(0.7), np.radians(115.0)
+    got = fam.describe(np.array([0.0, lr * np.cos(2 * th), lr * np.sin(2 * th)]))
+    assert got['ratio'] == pytest.approx(1 / 0.7, rel=1e-12)
+    assert got['tilt_deg'] == pytest.approx(25.0, abs=1e-9)
+    # and a tilt of theta and theta + 180 are the same group
+    for deg in (20.0, 75.0):
+        lr = np.log(1.4)
+        a = np.array([0.0, lr * np.cos(2 * np.radians(deg)),
+                      lr * np.sin(2 * np.radians(deg))])
+        b = np.array([0.0, lr * np.cos(2 * np.radians(deg + 180)),
+                      lr * np.sin(2 * np.radians(deg + 180))])
+        assert np.abs(a - b).max() < 1e-12
+
+
+def test_rho_is_zero_in_the_two_ways_it_should_be(grid):
+    """
+    rho measures the *interaction* of elongation and lean, so it vanishes both
+    for a round group and for an elongated group square to the board. Quoting it
+    as "the lean" without that caveat would be wrong, and the peak at 45 degrees
+    is where an axis-aligned model is blind.
+    """
+    fam = FAMILIES['tilted-t']
+
+    def shape(ratio, deg):
+        lr, th = np.log(ratio), np.radians(deg)
+        return np.array([np.log(0.4), lr * np.cos(2 * th), lr * np.sin(2 * th)])
+
+    assert fam.rho(shape(1.0, 30.0)) == pytest.approx(0.0, abs=1e-12)
+    assert fam.rho(shape(1.6, 0.0)) == pytest.approx(0.0, abs=1e-12)
+    assert fam.rho(shape(1.6, 90.0)) == pytest.approx(0.0, abs=1e-12)
+    assert fam.rho(shape(1.6, 45.0)) == pytest.approx(0.4382, abs=1e-3)
+    assert fam.rho(shape(1.6, 135.0)) == pytest.approx(-0.4382, abs=1e-3)
+    # the maximum a given elongation can reach, at 45 degrees
+    for ratio in (1.3, 1.6, 2.2):
+        k = ratio ** 2
+        assert fam.rho(shape(ratio, 45.0)) == pytest.approx((k - 1) / (k + 1),
+                                                            rel=1e-9)
+
+
+def test_the_scale_matrix_agrees_with_the_metric_it_came_from(grid):
+    """``scale_matrix`` is quoted to the rest of the project, so it must be the
+    same quadratic form the profile is actually evaluated on."""
+    fam = FAMILIES['tilted-t']
+    rng = np.random.default_rng(0)
+    for _ in range(5):
+        shape = np.array([np.log(0.5), rng.normal(0, 0.4), rng.normal(0, 0.4)])
+        S = fam.scale_matrix(7.0, shape)
+        inv = np.linalg.inv(S)
+        pts = rng.normal(0, 20, (30, 2))
+        direct = fam.squared_radius(pts[:, 0], pts[:, 1], shape) / 7.0 ** 2
+        quad = np.einsum('ij,jk,ik->i', pts, inv, pts)
+        assert direct == pytest.approx(quad, rel=1e-10)
