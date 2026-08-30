@@ -2,9 +2,11 @@
 import numpy as np
 import pytest
 
-from darts.hierarchical import (delta_interval, heterogeneity,
-                                observed_information, parameter_covariance,
-                                random_effects, shrink)
+from darts.hierarchical import (_pack_population, _unpack_population,
+                                delta_interval, heterogeneity,
+                                joint_hierarchical, observed_information,
+                                parameter_covariance, random_effects,
+                                random_effects_mv, shrink)
 
 
 def _gaussian_loglik(mean, cov):
@@ -215,3 +217,133 @@ def test_a_barely_positive_direction_is_refused_like_a_flat_one():
     out = parameter_covariance(nearly_flat, mean)
     assert not out["pd"]
     assert out["cov"] is None and out["se"] is None
+
+
+def _quadratic_units(seed, n, k=2, flat=()):
+    """
+    Units whose log-likelihoods are exactly quadratic.
+
+    This is the case where the answer is known: if every unit's likelihood is
+    Gaussian then so is the integral over the population, the two-stage
+    estimator is *exact* rather than an approximation, and the joint fit has
+    something to be right about. Units listed in ``flat`` say nothing at all
+    about their last coordinate.
+    """
+    rng = np.random.default_rng(seed)
+    mu_true = np.array([1.5, -0.5] + [0.0] * (k - 2))
+    theta = rng.multivariate_normal(mu_true, 0.3 * np.eye(k), size=n)
+    covs, hats = [], []
+    for p in range(n):
+        A = rng.normal(size=(k, k)) * 0.35
+        covs.append(A @ A.T + 0.05 * np.eye(k))
+        hats.append(rng.multivariate_normal(theta[p], covs[-1]))
+    covs, hats = np.stack(covs), np.stack(hats)
+
+    lls = []
+    for p in range(n):
+        info = np.linalg.inv(covs[p])
+        if p in flat:
+            info[-1, :] = info[:, -1] = 0.0
+        lls.append(lambda x, h=hats[p], A=info:
+                   -0.5 * float((x - h) @ A @ (x - h)))
+    return hats, covs, lls
+
+
+def test_every_packed_vector_names_a_covariance():
+    """
+    The acceleration extrapolates in the packed space and is under no obligation
+    to land anywhere sensible. Carrying T as a log-Cholesky is what makes that
+    safe: there is no vector that unpacks to a non-covariance, so the jump cannot
+    produce a population that is not one.
+    """
+    T = np.array([[0.4, 0.28, 0.05], [0.28, 0.30, -0.02], [0.05, -0.02, 0.9]])
+    mu = np.array([1.0, -2.0, 0.5])
+    back_mu, back_T = _unpack_population(_pack_population(mu, T), 3)
+    assert back_mu == pytest.approx(mu)
+    assert back_T == pytest.approx(T)
+
+    rng = np.random.default_rng(0)
+    for _ in range(200):
+        v = rng.normal(scale=2.0, size=3 + 6)
+        _, T_v = _unpack_population(v, 3)
+        assert np.allclose(T_v, T_v.T)
+        # the property is that it factors -- asserting on the smallest
+        # eigenvalue instead would be asserting on the eigensolver, which
+        # returns -1e-19 for a matrix a wild draw has conditioned at 1e5
+        np.linalg.cholesky(T_v)
+
+
+def test_the_joint_fit_reproduces_the_exact_answer():
+    """
+    The load-bearing test. With quadratic unit likelihoods the two-stage
+    estimator is exact, so the Laplace-EM must land on it -- any disagreement is
+    a bug in the joint model rather than the approximation it is entitled to
+    elsewhere.
+    """
+    hats, covs, lls = _quadratic_units(seed=3, n=15)
+    exact = random_effects_mv(hats, covs)
+    out = joint_hierarchical(lls, hats)
+
+    assert out["converged"]
+    assert out["mu"] == pytest.approx(exact["mu"], abs=5e-3)
+    assert out["T"] == pytest.approx(exact["T"], abs=5e-3)
+
+    # and the penalised modes are where the two densities agree, which for this
+    # case is the posterior mean in closed form
+    Tinv = np.linalg.inv(out["T"])
+    for p in range(len(hats)):
+        Vinv = np.linalg.inv(covs[p])
+        want = np.linalg.solve(Vinv + Tinv, Vinv @ hats[p] + Tinv @ out["mu"])
+        assert out["theta"][p] == pytest.approx(want, abs=1e-4)
+
+
+def test_a_unit_its_own_data_cannot_identify_is_ordinary_here():
+    """
+    The reason for fitting jointly rather than in two stages. A unit whose
+    likelihood is flat in a direction has no covariance to summarise -- the
+    two-stage route has to drop it -- but the *penalised* Hessian is
+    ``-grad^2 L_p + T^-1``, which is positive definite whenever T is. The
+    population supplies the missing curvature, and the unit is fitted like any
+    other.
+    """
+    hats, covs, lls = _quadratic_units(seed=5, n=14, flat=(0, 4, 9))
+
+    for p in (0, 4, 9):
+        assert not parameter_covariance(lls[p], hats[p])["pd"]
+
+    out = joint_hierarchical(lls, hats)
+    assert out["converged"]
+    assert len(out["theta"]) == len(hats)
+    assert np.isfinite(out["theta"]).all() and np.isfinite(out["cov"]).all()
+    slope = out["T"][1, 0] / out["T"][0, 0]
+    for p in (0, 4, 9):
+        assert np.linalg.eigvalsh(out["cov"][p]).min() > 0
+        # And what they are given is better than the population mean. With
+        # nothing of their own to say about the second coordinate they get the
+        # population's *conditional* prediction from the first -- the ridge, not
+        # the centre of it, which is the whole reason for a full T.
+        conditional = out["mu"][1] + slope * (out["theta"][p][0] - out["mu"][0])
+        assert out["theta"][p][1] == pytest.approx(conditional, abs=1e-3)
+        # while the coordinate they *do* measure stays close to their own
+        assert abs(out["theta"][p][0] - hats[p][0]) < abs(out["mu"][0] - hats[p][0])
+
+
+def test_acceleration_changes_the_cost_and_not_the_answer():
+    """
+    SQUAREM is safeguarded on the marginal, so it is meant to be a pure saving.
+    Plain EM here is slow for a reason worth recording: it converges linearly,
+    and on this case it crawls for tens of iterations at a rate near 0.9, which
+    is why the stopping rule is tight.
+    """
+    hats, _, lls = _quadratic_units(seed=7, n=12)
+    fast = joint_hierarchical(lls, hats)
+    slow = joint_hierarchical(lls, hats, accelerate=False)
+
+    assert fast["converged"] and slow["converged"]
+    assert fast["mu"] == pytest.approx(slow["mu"], abs=5e-3)
+    assert fast["T"] == pytest.approx(slow["T"], abs=5e-3)
+    assert fast["n_iter"] < slow["n_iter"]
+
+    # the safeguard: the marginal never goes backwards
+    h = np.array(fast["history"])
+    assert (np.diff(h) > -1e-6).all()

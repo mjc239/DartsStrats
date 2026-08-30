@@ -133,3 +133,4 @@ results/single_player/grid/
 # data/real/PROVENANCE.md and data/real/CHECKSUMS.txt ARE tracked.
 data/real/*.csv
 .cache/
+results/heterogeneity/**/joint_state.npz
