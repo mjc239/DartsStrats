@@ -93,8 +93,10 @@ same pixel, but the whole leg-length difference sits below 170. Its sign depends
 on the player: elite and pro finish 0.11 darts sooner as a t, the middle bands
 0.12–0.23 later, a pub player 1.61 sooner — because a t is better at an 8 mm bed
 and worse at a whole sector, and legs at different standards are made of those in
-different proportions. With 50 left and one dart, a Gaussian pro sets up for 32
-and a Student-t pro throws at the bull.
+different proportions. Counting darts, with 50 left and one dart a Gaussian pro
+sets up for 32 where a Student-t pro throws at the bull; counting visits, which
+is what a race is decided on, both go for the bull, and the same flip appears one
+band lower, at super league.
 
 **Measuring a Student-t player takes about twice as many darts.** Notebook 23
 puts the t into the fitting and measurement-design machinery, where it costs a
